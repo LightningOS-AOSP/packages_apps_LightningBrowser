@@ -79,4 +79,8 @@
     <string name="search_engine_bing_detail">bing.com</string>
     <string name="search_engine_brave">Brave Search</string>
     <string name="search_engine_brave_detail">search.brave.com</string>
+
+    <string name="downloads_title">Downloads</string>
+    <string name="downloads_group_today">Today</string>
+    <string name="downloads_group_yesterday">Yesterday</string>
 </resources>
