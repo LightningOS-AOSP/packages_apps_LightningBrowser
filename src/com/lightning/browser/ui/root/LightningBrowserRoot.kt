@@ -17,13 +17,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.ui.bar.LightningBottomBar
 import com.lightning.browser.ui.home.HomeScreen
+import com.lightning.browser.ui.settings.AppearanceScreen
 import com.lightning.browser.ui.settings.SettingsRootScreen
 import com.lightning.browser.ui.tabs.BrowserTab
 import com.lightning.browser.ui.tabs.TabSwitcherScreen
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.ThemeMode
 
-enum class LightningScreen { HOME, TABS, SETTINGS }
+enum class LightningScreen { HOME, TABS, SETTINGS, APPEARANCE }
 
 @Composable
 fun LightningBrowserRoot() {
@@ -66,9 +67,14 @@ fun LightningBrowserRoot() {
                     )
                     LightningScreen.SETTINGS -> SettingsRootScreen(
                         themeMode = themeMode,
-                        onOpenAppearance = {},
+                        onOpenAppearance = { screen = LightningScreen.APPEARANCE },
                         onOpenPrivacy = {},
                         onBack = { screen = LightningScreen.HOME },
+                    )
+                    LightningScreen.APPEARANCE -> AppearanceScreen(
+                        themeMode = themeMode,
+                        onThemeModeSelect = { themeMode = it },
+                        onBack = { screen = LightningScreen.SETTINGS },
                     )
                 }
             }
