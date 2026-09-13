@@ -19,6 +19,8 @@ import com.lightning.browser.ui.bar.LightningBottomBar
 import com.lightning.browser.ui.home.HomeScreen
 import com.lightning.browser.ui.settings.AboutScreen
 import com.lightning.browser.ui.settings.AppearanceScreen
+import com.lightning.browser.ui.settings.Bookmark
+import com.lightning.browser.ui.settings.BookmarksScreen
 import com.lightning.browser.ui.settings.DnsProvider
 import com.lightning.browser.ui.settings.DnsScreen
 import com.lightning.browser.ui.settings.DownloadsScreen
@@ -26,12 +28,13 @@ import com.lightning.browser.ui.settings.PrivacyScreen
 import com.lightning.browser.ui.settings.SearchEngine
 import com.lightning.browser.ui.settings.SearchEngineScreen
 import com.lightning.browser.ui.settings.SettingsRootScreen
+import com.lightning.browser.ui.settings.sampleBookmarks
 import com.lightning.browser.ui.tabs.BrowserTab
 import com.lightning.browser.ui.tabs.TabSwitcherScreen
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.ThemeMode
 
-enum class LightningScreen { HOME, TABS, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT }
+enum class LightningScreen { HOME, TABS, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT, BOOKMARKS }
 
 @Composable
 fun LightningBrowserRoot() {
@@ -49,10 +52,14 @@ fun LightningBrowserRoot() {
             BrowserTab(title = "Docs", domain = "lightning-web-web.vercel.app", private = true),
         )
     }
+    val bookmarks = remember {
+        mutableStateListOf<Bookmark>().apply { addAll(sampleBookmarks) }
+    }
 
     BackHandler(enabled = screen != LightningScreen.HOME) {
         screen = when (screen) {
             LightningScreen.TABS, LightningScreen.SETTINGS -> LightningScreen.HOME
+            LightningScreen.BOOKMARKS -> LightningScreen.HOME
             else -> LightningScreen.SETTINGS
         }
     }
@@ -99,6 +106,11 @@ fun LightningBrowserRoot() {
                     LightningScreen.ABOUT -> AboutScreen(
                         onBack = { screen = LightningScreen.SETTINGS },
                     )
+                    LightningScreen.BOOKMARKS -> BookmarksScreen(
+                        bookmarks = bookmarks,
+                        onDelete = { bookmarks.remove(it) },
+                        onBack = { screen = LightningScreen.HOME },
+                    )
                     LightningScreen.APPEARANCE -> AppearanceScreen(
                         themeMode = themeMode,
                         onThemeModeSelect = { themeMode = it },
@@ -131,6 +143,7 @@ fun LightningBrowserRoot() {
                         tabs.add(BrowserTab(title = "New tab", domain = ""))
                         screen = LightningScreen.TABS
                     },
+                    onBookmark = { screen = LightningScreen.BOOKMARKS },
                     onMenu = { screen = LightningScreen.SETTINGS },
                 )
             }

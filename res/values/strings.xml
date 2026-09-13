@@ -90,4 +90,8 @@
     <string name="about_licenses_summary">Apache, MIT and GPL components</string>
     <string name="about_website">Website</string>
     <string name="about_website_summary">lightning-web-web.vercel.app</string>
+
+    <string name="bookmarks_title">Bookmarks</string>
+    <string name="bookmarks_search_hint">Search bookmarks</string>
+    <string name="bookmarks_empty">No bookmarks yet</string>
 </resources>
