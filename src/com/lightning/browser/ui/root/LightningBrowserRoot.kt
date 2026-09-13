@@ -20,13 +20,14 @@ import com.lightning.browser.ui.home.HomeScreen
 import com.lightning.browser.ui.settings.AppearanceScreen
 import com.lightning.browser.ui.settings.DnsProvider
 import com.lightning.browser.ui.settings.DnsScreen
+import com.lightning.browser.ui.settings.PrivacyScreen
 import com.lightning.browser.ui.settings.SettingsRootScreen
 import com.lightning.browser.ui.tabs.BrowserTab
 import com.lightning.browser.ui.tabs.TabSwitcherScreen
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.ThemeMode
 
-enum class LightningScreen { HOME, TABS, SETTINGS, APPEARANCE, DNS }
+enum class LightningScreen { HOME, TABS, SETTINGS, APPEARANCE, DNS, PRIVACY }
 
 @Composable
 fun LightningBrowserRoot() {
@@ -35,6 +36,8 @@ fun LightningBrowserRoot() {
     var dnsProvider by rememberSaveable { mutableStateOf(DnsProvider.CLOUDFLARE) }
     var customDnsUrl by rememberSaveable { mutableStateOf("") }
     var bypassTrusted by rememberSaveable { mutableStateOf(false) }
+    var adBlocking by rememberSaveable { mutableStateOf(true) }
+    var fingerprintLock by rememberSaveable { mutableStateOf(false) }
     val tabs = remember {
         mutableStateListOf(
             BrowserTab(title = "LightningOS", domain = "lightning-web-web.vercel.app"),
@@ -73,7 +76,7 @@ fun LightningBrowserRoot() {
                     LightningScreen.SETTINGS -> SettingsRootScreen(
                         themeMode = themeMode,
                         onOpenAppearance = { screen = LightningScreen.APPEARANCE },
-                        onOpenPrivacy = {},
+                        onOpenPrivacy = { screen = LightningScreen.PRIVACY },
                         onBack = { screen = LightningScreen.HOME },
                     )
                     LightningScreen.APPEARANCE -> AppearanceScreen(
@@ -88,6 +91,15 @@ fun LightningBrowserRoot() {
                         onProviderSelect = { dnsProvider = it },
                         onCustomUrlChange = { customDnsUrl = it },
                         onBypassTrustedChange = { bypassTrusted = it },
+                        onBack = { screen = LightningScreen.SETTINGS },
+                    )
+                    LightningScreen.PRIVACY -> PrivacyScreen(
+                        provider = dnsProvider,
+                        adBlocking = adBlocking,
+                        fingerprintLock = fingerprintLock,
+                        onAdBlockingChange = { adBlocking = it },
+                        onFingerprintChange = { fingerprintLock = it },
+                        onOpenDns = { screen = LightningScreen.DNS },
                         onBack = { screen = LightningScreen.SETTINGS },
                     )
                 }

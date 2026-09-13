@@ -57,4 +57,15 @@
     <string name="dns_custom_hint">DoH URL</string>
     <string name="dns_custom_save">Save</string>
     <string name="dns_custom_cancel">Cancel</string>
+
+    <string name="privacy_title">Privacy and security</string>
+    <string name="privacy_ad_blocking">Ad and tracker blocking</string>
+    <string name="privacy_ad_blocking_summary">128 blocked today</string>
+    <string name="privacy_dns">Private DNS</string>
+    <string name="privacy_fingerprint">Fingerprint protection</string>
+    <string name="privacy_fingerprint_summary">Require biometrics to open the browser</string>
+    <string name="privacy_site_permissions">Site permissions</string>
+    <string name="privacy_site_permissions_summary">Notifications, location, camera</string>
+    <string name="privacy_clear_data">Clear browsing data</string>
+    <string name="privacy_clear_data_summary">Pages, history and cookies</string>
 </resources>
