@@ -1,6 +1,9 @@
 package com.lightning.browser.ui.home
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +20,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -27,7 +31,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -38,7 +44,16 @@ import com.lightning.browser.ui.theme.LightningColors
 import com.lightning.browser.ui.theme.LightningTheme
 
 @Composable
-fun HomeScreen(modifier: Modifier = Modifier) {
+fun HomeScreen(
+    recentPages: List<RecentPage> = emptyList(),
+    pinnedSites: List<PinnedSite> = emptyList(),
+    onOpenSearch: () -> Unit = {},
+    onOpenSite: (String) -> Unit = {},
+    onOpenProfile: () -> Unit = {},
+    onAddPinned: () -> Unit = {},
+    onRemovePinned: (PinnedSite) -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
     val colors = LightningTheme.colors
     Column(
         modifier = modifier
@@ -47,9 +62,9 @@ fun HomeScreen(modifier: Modifier = Modifier) {
             .padding(horizontal = 16.dp)
             .padding(top = 20.dp, bottom = 12.dp),
     ) {
-        SearchBar()
+        SearchBar(onOpenSearch = onOpenSearch, onOpenProfile = onOpenProfile)
         Spacer(Modifier.height(20.dp))
-        QuickAccessRow()
+        QuickAccessRow(pinnedSites, onOpenSite, onAddPinned, onRemovePinned)
         Spacer(Modifier.height(28.dp))
         Text(
             text = stringResource(R.string.home_recent_header),
@@ -57,16 +72,17 @@ fun HomeScreen(modifier: Modifier = Modifier) {
             color = colors.onSurfaceVariant,
         )
         Spacer(Modifier.height(12.dp))
-        RecentList()
+        RecentList(recentPages, onOpenSite)
     }
 }
 
 @Composable
-private fun SearchBar() {
+private fun SearchBar(onOpenSearch: () -> Unit, onOpenProfile: () -> Unit) {
     val colors = LightningTheme.colors
     Surface(
         color = colors.surfaceContainerHigh,
         shape = RoundedCornerShape(50),
+        onClick = onOpenSearch,
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp),
@@ -99,6 +115,7 @@ private fun SearchBar() {
             Surface(
                 color = colors.secondaryContainer,
                 shape = CircleShape,
+                onClick = onOpenProfile,
                 modifier = Modifier.size(36.dp),
             ) {
                 Icon(
@@ -115,30 +132,59 @@ private fun SearchBar() {
 }
 
 @Composable
-private fun QuickAccessRow() {
+private fun QuickAccessRow(
+    pinnedSites: List<PinnedSite>,
+    onOpenSite: (String) -> Unit,
+    onAddPinned: () -> Unit,
+    onRemovePinned: (PinnedSite) -> Unit,
+) {
     val colors = LightningTheme.colors
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(samplePinnedSites) { site ->
+        items(pinnedSites) { site ->
             val (container, onContainer) = colors.chipColors(site.tone)
-            Surface(
-                onClick = {},
-                shape = RoundedCornerShape(50),
-                color = container,
-                contentColor = onContainer,
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(container)
+                    .pointerInput(site) {
+                        detectTapGestures(
+                            onTap = { onOpenSite(site.domain) },
+                            onLongPress = { onRemovePinned(site) },
+                        )
+                    }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                 ) {
                     Icon(
                         imageVector = site.icon,
                         contentDescription = null,
+                        tint = onContainer,
                         modifier = Modifier.size(18.dp),
                     )
                     Spacer(Modifier.width(8.dp))
                     Text(
                         text = site.title,
                         style = MaterialTheme.typography.labelMedium,
+                        color = onContainer,
+                    )
+                }
+            }
+        }
+        item {
+            Surface(
+                onClick = onAddPinned,
+                shape = RoundedCornerShape(50),
+                color = colors.surfaceContainerHigh,
+                modifier = Modifier.size(92.dp),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = stringResource(R.string.home_pinned_add),
+                        tint = colors.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp),
                     )
                 }
             }
@@ -147,7 +193,7 @@ private fun QuickAccessRow() {
 }
 
 @Composable
-private fun RecentList() {
+private fun RecentList(pages: List<RecentPage>, onOpenSite: (String) -> Unit) {
     val colors = LightningTheme.colors
     Surface(
         color = colors.surfaceContainer,
@@ -155,8 +201,8 @@ private fun RecentList() {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(Modifier.padding(8.dp)) {
-            sampleRecentPages.forEach { page ->
-                RecentRow(page)
+            pages.forEach { page ->
+                RecentRow(page, onOpenSite)
                 Spacer(Modifier.height(4.dp))
             }
         }
@@ -164,11 +210,11 @@ private fun RecentList() {
 }
 
 @Composable
-private fun RecentRow(page: RecentPage) {
+private fun RecentRow(page: RecentPage, onOpenSite: (String) -> Unit) {
     val colors = LightningTheme.colors
     val (container, onContainer) = colors.chipColors(page.tone)
     Surface(
-        onClick = {},
+        onClick = { onOpenSite(page.domain) },
         shape = RoundedCornerShape(14.dp),
     ) {
         Row(

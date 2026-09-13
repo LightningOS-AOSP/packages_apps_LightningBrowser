@@ -25,10 +25,13 @@ import com.lightning.browser.ui.theme.LightningTheme
 fun PrivacyScreen(
     provider: DnsProvider,
     adBlocking: Boolean,
+    blockedCount: Int,
     fingerprintLock: Boolean,
     onAdBlockingChange: (Boolean) -> Unit,
     onFingerprintChange: (Boolean) -> Unit,
     onOpenDns: () -> Unit,
+    onOpenSitePermissions: () -> Unit,
+    onClearData: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -50,7 +53,7 @@ fun PrivacyScreen(
             Column(Modifier.padding(8.dp)) {
                 SettingsSwitchRow(
                     title = stringResource(R.string.privacy_ad_blocking),
-                    summary = stringResource(R.string.privacy_ad_blocking_summary),
+                    summary = stringResource(R.string.privacy_ad_blocking_summary, blockedCount),
                     checked = adBlocking,
                     onCheckedChange = onAdBlockingChange,
                 )
@@ -85,7 +88,7 @@ fun PrivacyScreen(
                     icon = Icons.Filled.Apps,
                     title = stringResource(R.string.privacy_site_permissions),
                     summary = stringResource(R.string.privacy_site_permissions_summary),
-                    onClick = {},
+                    onClick = onOpenSitePermissions,
                 )
                 Spacer(Modifier.height(2.dp))
                 SettingsDivider()
@@ -94,7 +97,7 @@ fun PrivacyScreen(
                     icon = Icons.Filled.Delete,
                     title = stringResource(R.string.privacy_clear_data),
                     summary = stringResource(R.string.privacy_clear_data_summary),
-                    onClick = {},
+                    onClick = onClearData,
                 )
             }
         }

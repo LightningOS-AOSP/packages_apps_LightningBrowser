@@ -34,6 +34,7 @@ fun DnsScreen(
     provider: DnsProvider,
     customUrl: String,
     bypassTrusted: Boolean,
+    resolvedCount: Int = 0,
     onProviderSelect: (DnsProvider) -> Unit,
     onCustomUrlChange: (String) -> Unit,
     onBypassTrustedChange: (Boolean) -> Unit,
@@ -101,6 +102,31 @@ fun DnsScreen(
                     summary = stringResource(R.string.dns_bypass_trusted_detail),
                     checked = bypassTrusted,
                     onCheckedChange = onBypassTrustedChange,
+                )
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        Surface(
+            color = colors.surfaceContainer,
+            shape = RoundedCornerShape(18.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                Text(
+                    text = stringResource(R.string.dns_status_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = if (resolvedCount > 0) {
+                        stringResource(R.string.dns_status_active, resolvedCount)
+                    } else {
+                        stringResource(R.string.dns_status_idle)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
                 )
             }
         }

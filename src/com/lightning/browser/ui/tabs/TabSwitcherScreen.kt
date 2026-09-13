@@ -46,7 +46,7 @@ fun TabSwitcherScreen(
     onCloseTab: (Int) -> Unit = {},
     onCloseAll: () -> Unit = {},
     onNewTab: () -> Unit = {},
-    onOpenTab: (BrowserTab) -> Unit = {},
+    onOpenTab: (Int) -> Unit = {},
 ) {
     val colors = LightningTheme.colors
     Box(Modifier.fillMaxSize()) {
@@ -86,7 +86,7 @@ fun TabSwitcherScreen(
                 ) {
                     items(tabs.size) { index ->
                         val tab = tabs[index]
-                        TabCard(tab, onClose = { onCloseTab(index) }, onOpen = { onOpenTab(tab) })
+                        TabCard(tab, onClose = { onCloseTab(index) }, onOpen = { onOpenTab(index) })
                     }
                 }
             }

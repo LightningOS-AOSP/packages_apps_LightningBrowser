@@ -21,6 +21,7 @@ data class LightningColors(
     val tertiaryContainer: Color,
     val onTertiaryContainer: Color,
     val outline: Color,
+    val outlineVariant: Color,
 )
 
 val lightColors = LightningColors(
@@ -38,6 +39,7 @@ val lightColors = LightningColors(
     tertiaryContainer = Color(0xFFCEECEC),
     onTertiaryContainer = Color(0xFF00201F),
     outline = Color(0xFFCAC4D0),
+    outlineVariant = Color(0xFFC9C5D0),
 )
 
 val darkColors = LightningColors(
@@ -55,4 +57,5 @@ val darkColors = LightningColors(
     tertiaryContainer = Color(0xFF004F58),
     onTertiaryContainer = Color(0xFF9DEEFF),
     outline = Color(0xFF49454F),
+    outlineVariant = Color(0xFF494550),
 )

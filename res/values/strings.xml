@@ -3,6 +3,10 @@
     <string name="app_name">Lightning</string>
 
     <string name="home_search_placeholder">Search or type a URL</string>
+    <string name="browser_suggestion_search">Search for “%1$s”</string>
+    <string name="browser_clear_query">Clear</string>
+    <string name="browser_refresh">Refresh</string>
+    <string name="browser_loading">Loading</string>
     <string name="home_recent_header">RECENT</string>
     <string name="home_search_mic">Voice search</string>
     <string name="home_profile_avatar">Profile</string>
@@ -48,7 +52,7 @@
     <string name="dns_provider_google">Google Public DNS</string>
     <string name="dns_provider_google_detail">8.8.8.8 · DNS over HTTPS</string>
     <string name="dns_provider_quad9">Quad9</string>
-    <string name="dns_provider_quad9_detail">9.9.9.9 · DNS over TLS</string>
+    <string name="dns_provider_quad9_detail">9.9.9.9 · DNS over HTTPS</string>
     <string name="dns_provider_custom">Custom provider</string>
     <string name="dns_provider_custom_detail">Enter a DoH URL</string>
     <string name="dns_bypass_trusted">Bypass on trusted networks</string>
@@ -57,17 +61,45 @@
     <string name="dns_custom_hint">DoH URL</string>
     <string name="dns_custom_save">Save</string>
     <string name="dns_custom_cancel">Cancel</string>
+    <string name="dns_status_title">DNS status</string>
+    <string name="dns_status_active">%1$d requests resolved over HTTPS this session — working</string>
+    <string name="dns_status_idle">No requests yet. Open a web page, then come back here to verify.</string>
 
     <string name="privacy_title">Privacy and security</string>
     <string name="privacy_ad_blocking">Ad and tracker blocking</string>
-    <string name="privacy_ad_blocking_summary">128 blocked today</string>
+    <string name="privacy_ad_blocking_summary">Blocked %1$d this session</string>
     <string name="privacy_dns">Private DNS</string>
     <string name="privacy_fingerprint">Fingerprint protection</string>
     <string name="privacy_fingerprint_summary">Require biometrics to open the browser</string>
     <string name="privacy_site_permissions">Site permissions</string>
-    <string name="privacy_site_permissions_summary">Notifications, location, camera</string>
+    <string name="privacy_site_permissions_summary">Saved sign-ins and app permissions</string>
     <string name="privacy_clear_data">Clear browsing data</string>
     <string name="privacy_clear_data_summary">Pages, history and cookies</string>
+    <string name="privacy_clear_confirm_title">Clear browsing data?</string>
+    <string name="privacy_clear_confirm_body">This erases cookies, cached pages, site data, browsing history and recent searches.</string>
+    <string name="privacy_clear">Clear</string>
+    <string name="privacy_cleared">Browsing data cleared</string>
+
+    <string name="site_permissions_title">Site permissions</string>
+    <string name="site_permissions_note">These are the sign-ins WebView remembers when a site asks for a username and password. They are stored on this device only.</string>
+    <string name="site_permissions_empty">No saved site permissions</string>
+    <string name="site_permissions_clear_all">Clear all</string>
+    <string name="site_permissions_creds_title">Saved sign-ins</string>
+    <string name="site_permissions_stored">Saved credentials present for sites you have signed into</string>
+    <string name="site_permissions_none_stored">No sign-in credentials stored</string>
+
+    <string name="fingerprint_title">Unlock Lightning</string>
+    <string name="fingerprint_subtitle">Use your fingerprint or device PIN to open the browser</string>
+    <string name="fingerprint_unlock">Unlock</string>
+    <string name="fingerprint_error">Could not unlock. Try again.</string>
+
+    <string name="home_pinned_add_title">Add pinned site</string>
+    <string name="home_pinned_hint">example.com</string>
+    <string name="home_pinned_added">Pinned added. Long-press a tile to remove it.</string>
+    <string name="home_pinned_removed">Pinned site removed</string>
+
+    <string name="about_website_url">https://lightning-web-web.vercel.app</string>
+    <string name="about_licenses_body">Lightning Browser is Apache-2.0 licensed.\n\nIt builds on Chromium-inspired WebView APIs, AndroidX Compose (Apache-2.0), Kotlin (Apache-2.0) and a few MIT-licensed helpers. Full license texts ship with the AOSP build this browser is part of.</string>
 
     <string name="search_engine_title">Search engine</string>
     <string name="search_engine_subtitle">Chosen from the address bar when you type a search.</string>
@@ -83,6 +115,14 @@
     <string name="downloads_title">Downloads</string>
     <string name="downloads_group_today">Today</string>
     <string name="downloads_group_yesterday">Yesterday</string>
+    <string name="downloads_group_earlier">Earlier</string>
+    <string name="downloads_storage_title">All files access</string>
+    <string name="downloads_storage_summary">Lets Lightning save files to the internal Download folder.</string>
+    <string name="downloads_storage_grant">Grant access</string>
+    <string name="downloads_empty">No downloads yet</string>
+    <string name="downloads_empty_detail">Files you download will appear here.</string>
+    <string name="download_pause">Pause</string>
+    <string name="download_resume">Resume</string>
 
     <string name="about_title">About</string>
     <string name="about_version">Version 1.0</string>
@@ -94,9 +134,18 @@
     <string name="bookmarks_title">Bookmarks</string>
     <string name="bookmarks_search_hint">Search bookmarks</string>
     <string name="bookmarks_empty">No bookmarks yet</string>
+    <string name="bookmark_added">Added to bookmarks</string>
+    <string name="bookmark_removed">Removed from bookmarks</string>
+    <string name="bookmark_no_page">Nothing to bookmark yet</string>
+    <string name="bookmarks_add_to_folder">Save to folder</string>
+    <string name="bookmarks_root">Main</string>
+    <string name="bookmarks_new_folder">New folder…</string>
+    <string name="bookmarks_new_folder_title">New folder</string>
+    <string name="bookmarks_folder_hint">Folder name</string>
 
     <string name="history_title">History</string>
     <string name="history_clear">Clear history</string>
     <string name="history_empty">No browsing history</string>
     <string name="history_group_lastweek">Last week</string>
+    <string name="history_group_older">Older</string>
 </resources>

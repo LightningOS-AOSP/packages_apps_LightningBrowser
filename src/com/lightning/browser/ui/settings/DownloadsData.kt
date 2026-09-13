@@ -3,7 +3,7 @@ package com.lightning.browser.ui.settings
 import androidx.annotation.StringRes
 import com.lightning.browser.R
 
-enum class DownloadState { COMPLETE, DOWNLOADING }
+enum class DownloadState { COMPLETE, DOWNLOADING, PAUSED }
 
 data class DownloadItem(
     val title: String,
@@ -11,6 +11,8 @@ data class DownloadItem(
     val detail: String,
     val state: DownloadState,
     val progress: Float,
+    val timestamp: Long = 0L,
+    val downloadId: Long = -1L,
 )
 
 data class DownloadGroup(
