@@ -38,4 +38,23 @@
 
     <string name="appearance_title">Appearance</string>
     <string name="appearance_preview_label">Theme preview</string>
+
+    <string name="dns_title">Private DNS</string>
+    <string name="dns_subtitle">Keep your DNS queries private from your network provider.</string>
+    <string name="dns_provider_off">Off</string>
+    <string name="dns_provider_off_detail">Use the network default</string>
+    <string name="dns_provider_cloudflare">Cloudflare</string>
+    <string name="dns_provider_cloudflare_detail">1.1.1.1 · DNS over HTTPS</string>
+    <string name="dns_provider_google">Google Public DNS</string>
+    <string name="dns_provider_google_detail">8.8.8.8 · DNS over HTTPS</string>
+    <string name="dns_provider_quad9">Quad9</string>
+    <string name="dns_provider_quad9_detail">9.9.9.9 · DNS over TLS</string>
+    <string name="dns_provider_custom">Custom provider</string>
+    <string name="dns_provider_custom_detail">Enter a DoH URL</string>
+    <string name="dns_bypass_trusted">Bypass on trusted networks</string>
+    <string name="dns_bypass_trusted_detail">Use network DNS on home Wi-Fi</string>
+    <string name="dns_custom_title">Custom DNS provider</string>
+    <string name="dns_custom_hint">DoH URL</string>
+    <string name="dns_custom_save">Save</string>
+    <string name="dns_custom_cancel">Cancel</string>
 </resources>
