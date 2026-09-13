@@ -21,18 +21,21 @@ import com.lightning.browser.ui.settings.AppearanceScreen
 import com.lightning.browser.ui.settings.DnsProvider
 import com.lightning.browser.ui.settings.DnsScreen
 import com.lightning.browser.ui.settings.PrivacyScreen
+import com.lightning.browser.ui.settings.SearchEngine
+import com.lightning.browser.ui.settings.SearchEngineScreen
 import com.lightning.browser.ui.settings.SettingsRootScreen
 import com.lightning.browser.ui.tabs.BrowserTab
 import com.lightning.browser.ui.tabs.TabSwitcherScreen
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.ThemeMode
 
-enum class LightningScreen { HOME, TABS, SETTINGS, APPEARANCE, DNS, PRIVACY }
+enum class LightningScreen { HOME, TABS, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE }
 
 @Composable
 fun LightningBrowserRoot() {
     var screen by rememberSaveable { mutableStateOf(LightningScreen.HOME) }
     var themeMode by rememberSaveable { mutableStateOf(ThemeMode.SYSTEM) }
+    var searchEngine by rememberSaveable { mutableStateOf(SearchEngine.GOOGLE) }
     var dnsProvider by rememberSaveable { mutableStateOf(DnsProvider.CLOUDFLARE) }
     var customDnsUrl by rememberSaveable { mutableStateOf("") }
     var bypassTrusted by rememberSaveable { mutableStateOf(false) }
@@ -75,9 +78,18 @@ fun LightningBrowserRoot() {
                     )
                     LightningScreen.SETTINGS -> SettingsRootScreen(
                         themeMode = themeMode,
+                        searchEngine = searchEngine,
                         onOpenAppearance = { screen = LightningScreen.APPEARANCE },
                         onOpenPrivacy = { screen = LightningScreen.PRIVACY },
+                        onOpenSearchEngine = { screen = LightningScreen.SEARCH_ENGINE },
+                        onOpenDownloads = {},
+                        onOpenAbout = {},
                         onBack = { screen = LightningScreen.HOME },
+                    )
+                    LightningScreen.SEARCH_ENGINE -> SearchEngineScreen(
+                        engine = searchEngine,
+                        onEngineSelect = { searchEngine = it },
+                        onBack = { screen = LightningScreen.SETTINGS },
                     )
                     LightningScreen.APPEARANCE -> AppearanceScreen(
                         themeMode = themeMode,

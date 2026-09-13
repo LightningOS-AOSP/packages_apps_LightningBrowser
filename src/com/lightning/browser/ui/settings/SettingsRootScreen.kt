@@ -27,8 +27,12 @@ import com.lightning.browser.ui.theme.ThemeMode
 @Composable
 fun SettingsRootScreen(
     themeMode: ThemeMode,
+    searchEngine: SearchEngine,
     onOpenAppearance: () -> Unit,
     onOpenPrivacy: () -> Unit,
+    onOpenSearchEngine: () -> Unit,
+    onOpenDownloads: () -> Unit,
+    onOpenAbout: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -65,22 +69,22 @@ fun SettingsRootScreen(
                 SettingsRow(
                     icon = Icons.Filled.Language,
                     title = stringResource(R.string.settings_search_engine),
-                    summary = stringResource(R.string.settings_search_engine_summary),
-                    onClick = {},
+                    summary = stringResource(searchEngine.labelRes),
+                    onClick = onOpenSearchEngine,
                 )
                 Spacer(Modifier.height(2.dp))
                 SettingsRow(
                     icon = Icons.Filled.Download,
                     title = stringResource(R.string.settings_downloads),
                     summary = stringResource(R.string.settings_downloads_summary),
-                    onClick = {},
+                    onClick = onOpenDownloads,
                 )
                 Spacer(Modifier.height(2.dp))
                 SettingsRow(
                     icon = Icons.Filled.Info,
                     title = stringResource(R.string.settings_about),
                     summary = stringResource(R.string.settings_about_summary),
-                    onClick = {},
+                    onClick = onOpenAbout,
                 )
             }
         }

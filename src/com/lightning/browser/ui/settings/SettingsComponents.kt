@@ -1,6 +1,8 @@
 package com.lightning.browser.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -26,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -176,4 +180,78 @@ fun SettingsDivider() {
         color = colors.outline.copy(alpha = 0.35f),
         modifier = Modifier.padding(start = 72.dp),
     )
+}
+
+@Composable
+fun SettingsRadioRow(
+    title: String,
+    summary: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            RadioDot(selected)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    text = summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                )
+            }
+            if (selected) {
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RadioDot(selected: Boolean) {
+    val colors = LightningTheme.colors
+    Box(
+        modifier = Modifier
+            .size(20.dp)
+            .background(
+                color = if (selected) Color.Transparent else colors.surfaceContainerHigh,
+                shape = CircleShape,
+            )
+            .border(
+                width = 2.dp,
+                color = if (selected) colors.primary else colors.outline,
+                shape = CircleShape,
+            ),
+    ) {
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(10.dp)
+                    .background(colors.primary, CircleShape),
+            )
+        }
+    }
 }

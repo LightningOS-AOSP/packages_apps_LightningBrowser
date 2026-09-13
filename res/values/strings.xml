@@ -68,4 +68,15 @@
     <string name="privacy_site_permissions_summary">Notifications, location, camera</string>
     <string name="privacy_clear_data">Clear browsing data</string>
     <string name="privacy_clear_data_summary">Pages, history and cookies</string>
+
+    <string name="search_engine_title">Search engine</string>
+    <string name="search_engine_subtitle">Chosen from the address bar when you type a search.</string>
+    <string name="search_engine_google">Google</string>
+    <string name="search_engine_google_detail">google.com</string>
+    <string name="search_engine_duckduckgo">DuckDuckGo</string>
+    <string name="search_engine_duckduckgo_detail">duckduckgo.com</string>
+    <string name="search_engine_bing">Bing</string>
+    <string name="search_engine_bing_detail">bing.com</string>
+    <string name="search_engine_brave">Brave Search</string>
+    <string name="search_engine_brave_detail">search.brave.com</string>
 </resources>
