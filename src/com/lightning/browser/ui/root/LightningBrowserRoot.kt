@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.ui.bar.LightningBottomBar
 import com.lightning.browser.ui.home.HomeScreen
+import com.lightning.browser.ui.settings.AboutScreen
 import com.lightning.browser.ui.settings.AppearanceScreen
 import com.lightning.browser.ui.settings.DnsProvider
 import com.lightning.browser.ui.settings.DnsScreen
@@ -30,7 +31,7 @@ import com.lightning.browser.ui.tabs.TabSwitcherScreen
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.ThemeMode
 
-enum class LightningScreen { HOME, TABS, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS }
+enum class LightningScreen { HOME, TABS, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT }
 
 @Composable
 fun LightningBrowserRoot() {
@@ -84,7 +85,7 @@ fun LightningBrowserRoot() {
                         onOpenPrivacy = { screen = LightningScreen.PRIVACY },
                         onOpenSearchEngine = { screen = LightningScreen.SEARCH_ENGINE },
                         onOpenDownloads = { screen = LightningScreen.DOWNLOADS },
-                        onOpenAbout = {},
+                        onOpenAbout = { screen = LightningScreen.ABOUT },
                         onBack = { screen = LightningScreen.HOME },
                     )
                     LightningScreen.SEARCH_ENGINE -> SearchEngineScreen(
@@ -93,6 +94,9 @@ fun LightningBrowserRoot() {
                         onBack = { screen = LightningScreen.SETTINGS },
                     )
                     LightningScreen.DOWNLOADS -> DownloadsScreen(
+                        onBack = { screen = LightningScreen.SETTINGS },
+                    )
+                    LightningScreen.ABOUT -> AboutScreen(
                         onBack = { screen = LightningScreen.SETTINGS },
                     )
                     LightningScreen.APPEARANCE -> AppearanceScreen(

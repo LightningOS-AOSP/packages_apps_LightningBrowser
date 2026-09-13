@@ -83,4 +83,11 @@
     <string name="downloads_title">Downloads</string>
     <string name="downloads_group_today">Today</string>
     <string name="downloads_group_yesterday">Yesterday</string>
+
+    <string name="about_title">About</string>
+    <string name="about_version">Version 1.0</string>
+    <string name="about_licenses">Open-source licenses</string>
+    <string name="about_licenses_summary">Apache, MIT and GPL components</string>
+    <string name="about_website">Website</string>
+    <string name="about_website_summary">lightning-web-web.vercel.app</string>
 </resources>
