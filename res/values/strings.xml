@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lightning</string>
+
+    <string name="home_search_placeholder">Search or type a URL</string>
+    <string name="home_recent_header">RECENT</string>
+    <string name="home_search_mic">Voice search</string>
+    <string name="home_profile_avatar">Profile</string>
+    <string name="home_pinned_add">Add pinned site slot</string>
+
+    <string name="tabs_title">Tabs</string>
+    <string name="tabs_close_all">CLOSE ALL</string>
+    <string name="tabs_private">Private</string>
+    <string name="tabs_close_tab">Close tab</string>
+
+    <string name="bar_back">Back</string>
+    <string name="bar_forward">Forward</string>
+    <string name="bar_bookmark">Bookmark</string>
+    <string name="bar_menu">Menu</string>
+    <string name="bar_new_tab">New tab</string>
+</resources>
