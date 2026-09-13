@@ -10,13 +10,23 @@ import androidx.compose.runtime.staticCompositionLocalOf
 
 val LocalLightningColors = staticCompositionLocalOf { lightColors }
 
+enum class ThemeMode { LIGHT, DARK, SYSTEM }
+
+fun lightningColorsFor(dark: Boolean) = if (dark) darkColors else lightColors
+
 @Composable
 fun LightningTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
     content: @Composable () -> Unit,
 ) {
-    val colors = if (darkTheme) darkColors else lightColors
-    val colorScheme = if (darkTheme) {
+    val systemDark = isSystemInDarkTheme()
+    val dark = when (themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> systemDark
+    }
+    val colors = lightningColorsFor(dark)
+    val colorScheme = if (dark) {
         darkColorScheme(
             surface = colors.surface,
             surfaceContainer = colors.surfaceContainer,
