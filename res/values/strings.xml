@@ -94,4 +94,9 @@
     <string name="bookmarks_title">Bookmarks</string>
     <string name="bookmarks_search_hint">Search bookmarks</string>
     <string name="bookmarks_empty">No bookmarks yet</string>
+
+    <string name="history_title">History</string>
+    <string name="history_clear">Clear history</string>
+    <string name="history_empty">No browsing history</string>
+    <string name="history_group_lastweek">Last week</string>
 </resources>

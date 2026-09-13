@@ -24,17 +24,20 @@ import com.lightning.browser.ui.settings.BookmarksScreen
 import com.lightning.browser.ui.settings.DnsProvider
 import com.lightning.browser.ui.settings.DnsScreen
 import com.lightning.browser.ui.settings.DownloadsScreen
+import com.lightning.browser.ui.settings.HistoryEntry
+import com.lightning.browser.ui.settings.HistoryScreen
 import com.lightning.browser.ui.settings.PrivacyScreen
 import com.lightning.browser.ui.settings.SearchEngine
 import com.lightning.browser.ui.settings.SearchEngineScreen
 import com.lightning.browser.ui.settings.SettingsRootScreen
 import com.lightning.browser.ui.settings.sampleBookmarks
+import com.lightning.browser.ui.settings.sampleHistory
 import com.lightning.browser.ui.tabs.BrowserTab
 import com.lightning.browser.ui.tabs.TabSwitcherScreen
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.ThemeMode
 
-enum class LightningScreen { HOME, TABS, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT, BOOKMARKS }
+enum class LightningScreen { HOME, TABS, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT, BOOKMARKS, HISTORY }
 
 @Composable
 fun LightningBrowserRoot() {
@@ -55,11 +58,15 @@ fun LightningBrowserRoot() {
     val bookmarks = remember {
         mutableStateListOf<Bookmark>().apply { addAll(sampleBookmarks) }
     }
+    val history = remember {
+        mutableStateListOf<HistoryEntry>().apply { addAll(sampleHistory) }
+    }
+    var showMenu by remember { mutableStateOf(false) }
 
     BackHandler(enabled = screen != LightningScreen.HOME) {
         screen = when (screen) {
             LightningScreen.TABS, LightningScreen.SETTINGS -> LightningScreen.HOME
-            LightningScreen.BOOKMARKS -> LightningScreen.HOME
+            LightningScreen.BOOKMARKS, LightningScreen.HISTORY -> LightningScreen.HOME
             else -> LightningScreen.SETTINGS
         }
     }
@@ -111,6 +118,12 @@ fun LightningBrowserRoot() {
                         onDelete = { bookmarks.remove(it) },
                         onBack = { screen = LightningScreen.HOME },
                     )
+                    LightningScreen.HISTORY -> HistoryScreen(
+                        history = history,
+                        onDelete = { history.remove(it) },
+                        onClear = { history.clear() },
+                        onBack = { screen = LightningScreen.HOME },
+                    )
                     LightningScreen.APPEARANCE -> AppearanceScreen(
                         themeMode = themeMode,
                         onThemeModeSelect = { themeMode = it },
@@ -144,7 +157,15 @@ fun LightningBrowserRoot() {
                         screen = LightningScreen.TABS
                     },
                     onBookmark = { screen = LightningScreen.BOOKMARKS },
-                    onMenu = { screen = LightningScreen.SETTINGS },
+                    onMenu = { showMenu = true },
+                )
+                AppMenuSheet(
+                    visible = showMenu,
+                    onHide = { showMenu = false },
+                    onOpen = {
+                        showMenu = false
+                        screen = it
+                    },
                 )
             }
         }

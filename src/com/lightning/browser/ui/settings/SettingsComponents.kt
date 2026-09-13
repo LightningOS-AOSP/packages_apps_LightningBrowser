@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -52,7 +53,11 @@ fun ThemeMode.label(): String = when (this) {
 }
 
 @Composable
-fun SettingsHeader(title: String, onBack: () -> Unit) {
+fun SettingsHeader(
+    title: String,
+    onBack: () -> Unit,
+    trailing: @Composable RowScope.() -> Unit = {},
+) {
     val colors = LightningTheme.colors
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -73,7 +78,9 @@ fun SettingsHeader(title: String, onBack: () -> Unit) {
             style = MaterialTheme.typography.titleMedium,
             color = colors.onSurface,
             fontWeight = FontWeight.Bold,
+            modifier = Modifier.weight(1f),
         )
+        trailing()
     }
 }
 
