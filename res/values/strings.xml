@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Lightning</string>
+    <string name="app_name">Lightning Browser</string>
 
     <string name="home_search_placeholder">Search or type a URL</string>
     <string name="browser_suggestion_search">Search for “%1$s”</string>
@@ -22,6 +22,9 @@
     <string name="bar_bookmark">Bookmark</string>
     <string name="bar_menu">Menu</string>
     <string name="bar_new_tab">New tab</string>
+
+    <string name="menu_copy_url">Copy URL</string>
+    <string name="menu_copy_url_copied">URL copied to clipboard</string>
 
     <string name="back">Back</string>
 

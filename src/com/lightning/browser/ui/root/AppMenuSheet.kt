@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
@@ -39,6 +40,8 @@ fun AppMenuSheet(
     visible: Boolean,
     onHide: () -> Unit,
     onOpen: (LightningScreen) -> Unit,
+    onCopyUrl: () -> Unit = {},
+    copyUrlVisible: Boolean = false,
 ) {
     if (visible) {
         val sheetState = rememberModalBottomSheetState()
@@ -53,6 +56,12 @@ fun AppMenuSheet(
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 28.dp),
             ) {
+                if (copyUrlVisible) {
+                    SheetItem(Icons.Filled.ContentCopy, stringResource(R.string.menu_copy_url), {
+                        onCopyUrl()
+                        onHide()
+                    })
+                }
                 SheetItem(Icons.Filled.Bookmark, stringResource(R.string.bookmarks_title), { onOpen(LightningScreen.BOOKMARKS) })
                 SheetItem(Icons.Filled.History, stringResource(R.string.history_title), { onOpen(LightningScreen.HISTORY) })
                 SheetItem(Icons.Filled.FileDownload, stringResource(R.string.settings_downloads), { onOpen(LightningScreen.DOWNLOADS) })

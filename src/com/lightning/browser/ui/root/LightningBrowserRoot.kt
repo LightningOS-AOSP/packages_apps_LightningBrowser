@@ -2,6 +2,8 @@ package com.lightning.browser.ui.root
 
 import android.app.Activity
 import android.app.KeyguardManager
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.webkit.CookieManager
 import android.webkit.WebStorage
@@ -233,6 +235,14 @@ fun LightningBrowserRoot() {
         history.clear()
         recentSearches.clear()
         Toast.makeText(context, R.string.privacy_cleared, Toast.LENGTH_SHORT).show()
+    }
+
+    fun copyUrl() {
+        val url = tabs.getOrNull(activeIndex)?.url ?: return
+        if (url.isBlank()) return
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("url", url))
+        Toast.makeText(context, R.string.menu_copy_url_copied, Toast.LENGTH_SHORT).show()
     }
 
     val bookmarkFolders = bookmarks.map { it.folder }.filter { it.isNotBlank() }.distinct()
@@ -473,6 +483,9 @@ fun LightningBrowserRoot() {
             AppMenuSheet(
                 visible = showMenu,
                 onHide = { showMenu = false },
+                onCopyUrl = { copyUrl() },
+                copyUrlVisible = screen == LightningScreen.BROWSER &&
+                    tabs.getOrNull(activeIndex)?.url?.isNotEmpty() == true,
                 onOpen = {
                     showMenu = false
                     screen = it

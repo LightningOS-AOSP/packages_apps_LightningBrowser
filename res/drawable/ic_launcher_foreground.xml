@@ -1,10 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Foreground layer for the LightningOS / Thunderbolt adaptive icon.
+  Canvas: 108x108dp (Android adaptive icon standard).
+  Content is kept within the ~66dp-diameter safe zone centered on
+  the canvas, so nothing gets clipped by circle/squircle/rounded-square masks.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Outer ring -->
     <path
-        android:fillColor="#F5A623"
-        android:pathData="M59.5,16 L39,59 L51,59 L46.5,92 L73,46 L59,46 L67,16 Z" />
+        android:pathData="M24,54 A30,30 0 1,1 84,54 A30,30 0 1,1 24,54"
+        android:fillColor="#00000000"
+        android:strokeWidth="5"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="24"
+                android:startY="24"
+                android:endX="84"
+                android:endY="84"
+                android:startColor="#9B5DE5"
+                android:endColor="#38BDF8" />
+        </aapt:attr>
+    </path>
+
+    <!-- Lightning bolt -->
+    <path android:pathData="M40.25,26.5 L40.25,56.75 L48.5,56.75 L48.5,81.5 L67.75,48.5 L56.75,48.5 L67.75,26.5 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="40.25"
+                android:startY="26.5"
+                android:endX="48.5"
+                android:endY="81.5"
+                android:startColor="#7C6CF2"
+                android:endColor="#38BDF8" />
+        </aapt:attr>
+    </path>
+
 </vector>
