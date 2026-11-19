@@ -34,7 +34,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Folder
@@ -65,6 +64,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
@@ -75,6 +75,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.lightning.browser.R
 import com.lightning.browser.ui.BrowserStore
 import com.lightning.browser.ui.bar.LightningBottomBar
+import com.lightning.browser.ui.components.GroupedColumn
+import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.browser.BrowserScreen
 import com.lightning.browser.ui.browser.TabNavState
 import com.lightning.browser.ui.home.HomeScreen
@@ -98,6 +100,7 @@ import com.lightning.browser.ui.settings.SettingsRootScreen
 import com.lightning.browser.ui.settings.SitePermissionsScreen
 import com.lightning.browser.ui.tabs.BrowserTab
 import com.lightning.browser.ui.tabs.TabSwitcherScreen
+import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -555,7 +558,7 @@ fun LightningBrowserRoot() {
                                     color = colors.onSurfaceVariant,
                                 )
                             },
-                            shape = RoundedCornerShape(14.dp),
+                            shape = MaterialTheme.shapes.extraSmall,
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = colors.surfaceContainerHigh,
                                 unfocusedContainerColor = colors.surfaceContainerHigh,
@@ -613,20 +616,14 @@ private fun LockScreen(error: Boolean, onUnlock: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Surface(
-                color = colors.primaryContainer,
-                shape = CircleShape,
-                modifier = Modifier.size(96.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Filled.Lock,
-                        contentDescription = null,
-                        tint = colors.onPrimaryContainer,
-                        modifier = Modifier.size(44.dp),
-                    )
-                }
-            }
+            ShapedIcon(
+                Icons.Filled.Lock,
+                ExpressiveShapes.Cookie9,
+                colors.primaryContainer,
+                colors.onPrimaryContainer,
+                size = 120.dp,
+                iconSize = 56.dp,
+            )
             Spacer(Modifier.height(20.dp))
             Text(
                 text = stringResource(R.string.fingerprint_title),
@@ -648,7 +645,7 @@ private fun LockScreen(error: Boolean, onUnlock: () -> Unit) {
                     containerColor = colors.primary,
                     contentColor = colors.onPrimary,
                 ),
-                shape = RoundedCornerShape(50),
+                shape = CircleShape,
                 modifier = Modifier
                     .width(200.dp)
                     .height(48.dp),
@@ -690,7 +687,7 @@ private fun BookmarkFolderDialog(
                             color = colors.onSurfaceVariant,
                         )
                     },
-                    shape = RoundedCornerShape(14.dp),
+                    shape = MaterialTheme.shapes.extraSmall,
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = colors.surfaceContainerHigh,
                         unfocusedContainerColor = colors.surfaceContainerHigh,
@@ -718,27 +715,33 @@ private fun BookmarkFolderDialog(
     } else {
         AlertDialog(
             onDismissRequest = onDismiss,
+            shape = MaterialTheme.shapes.extraLarge,
             title = { Text(stringResource(R.string.bookmarks_add_to_folder)) },
             text = {
-                Column {
-                    FolderOption(
-                        depth = 0,
-                        label = stringResource(R.string.bookmarks_root),
-                        onClick = { onPick("") },
-                    )
-                    folders.forEach { folder ->
-                        FolderOption(
+                GroupedColumn(folders.size + 2) { i, shape ->
+                    when {
+                        i == 0 -> FolderOption(
                             depth = 0,
-                            label = folder,
-                            onClick = { onPick(folder) },
+                            label = stringResource(R.string.bookmarks_root),
+                            onClick = { onPick("") },
+                            shape = shape,
+                            index = i,
+                        )
+                        i == folders.size + 1 -> FolderOption(
+                            depth = 0,
+                            label = stringResource(R.string.bookmarks_new_folder),
+                            onClick = { creating = true },
+                            shape = shape,
+                            index = i,
+                        )
+                        else -> FolderOption(
+                            depth = 0,
+                            label = folders[i - 1],
+                            onClick = { onPick(folders[i - 1]) },
+                            shape = shape,
+                            index = i,
                         )
                     }
-                    Spacer(Modifier.height(4.dp))
-                    FolderOption(
-                        depth = 0,
-                        label = stringResource(R.string.bookmarks_new_folder),
-                        onClick = { creating = true },
-                    )
                 }
             },
             confirmButton = {},
@@ -752,25 +755,31 @@ private fun BookmarkFolderDialog(
 }
 
 @Composable
-private fun FolderOption(depth: Int, label: String, onClick: () -> Unit) {
+private fun FolderOption(
+    depth: Int,
+    label: String,
+    onClick: () -> Unit,
+    shape: Shape = ExpressiveShapes.grouped(0, 1),
+    index: Int = 0,
+) {
     val colors = LightningTheme.colors
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = shape,
         color = colors.surfaceContainerHigh,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 3.dp),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
         ) {
-            Icon(
-                imageVector = Icons.Filled.Folder,
-                contentDescription = null,
-                tint = colors.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
+            ShapedIcon(
+                Icons.Filled.Folder,
+                ExpressiveShapes.cycle(index),
+                colors.surfaceContainer,
+                colors.onSurfaceVariant,
+                size = 32.dp,
+                iconSize = 18.dp,
             )
             Spacer(Modifier.width(12.dp))
             Text(
@@ -782,7 +791,7 @@ private fun FolderOption(depth: Int, label: String, onClick: () -> Unit) {
     }
 }
 
-private val BAR_BOTTOM_PADDING = 72.dp
+private val BAR_BOTTOM_PADDING = 88.dp
 
 private fun hostOf(url: String): String =
     runCatching { android.net.Uri.parse(url).host }.getOrNull() ?: ""

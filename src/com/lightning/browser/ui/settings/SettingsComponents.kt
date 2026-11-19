@@ -10,20 +10,16 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
@@ -37,12 +33,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
+import com.lightning.browser.ui.components.ShapedIcon
+import com.lightning.browser.ui.components.TonalIconButton
+import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.tone
 import com.lightning.browser.ui.theme.ThemeMode
 
 @Composable
@@ -59,28 +59,23 @@ fun SettingsHeader(
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
     val colors = LightningTheme.colors
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
-    ) {
-        IconButton(onClick = onBack) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+    Column(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TonalIconButton(
+                icon = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = stringResource(R.string.back),
+                onClick = onBack,
                 tint = colors.onSurface,
             )
+            Spacer(Modifier.weight(1f))
+            trailing()
         }
-        Spacer(Modifier.width(4.dp))
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
+            style = MaterialTheme.typography.headlineLarge,
             color = colors.onSurface,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 16.dp),
         )
-        trailing()
     }
 }
 
@@ -90,42 +85,39 @@ fun SettingsRow(
     title: String,
     summary: String,
     onClick: () -> Unit,
+    shape: Shape = ExpressiveShapes.grouped(0, 1),
+    index: Int = 0,
 ) {
     val colors = LightningTheme.colors
+    val tone = colors.tone(index % 3)
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = shape,
+        color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
-            Surface(
-                color = colors.primaryContainer,
-                shape = CircleShape,
-                modifier = Modifier.size(44.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = colors.onPrimaryContainer,
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.width(12.dp))
+            ShapedIcon(
+                icon,
+                ExpressiveShapes.cycle(index),
+                tone.container,
+                tone.content,
+                size = 48.dp,
+                iconSize = 24.dp,
+            )
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.titleMedium,
                     color = colors.onSurface,
-                    fontWeight = FontWeight.Medium,
                 )
                 Text(
                     text = summary,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelMedium,
                     color = colors.onSurfaceVariant,
                 )
             }
@@ -146,26 +138,27 @@ fun SettingsSwitchRow(
     summary: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    shape: Shape = ExpressiveShapes.grouped(0, 1),
 ) {
     val colors = LightningTheme.colors
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = shape,
+        color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.titleMedium,
                     color = colors.onSurface,
-                    fontWeight = FontWeight.Medium,
                 )
                 Text(
                     text = summary,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelMedium,
                     color = colors.onSurfaceVariant,
                 )
             }
@@ -173,6 +166,17 @@ fun SettingsSwitchRow(
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
+                thumbContent = if (checked) {
+                    {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(SwitchDefaults.IconSize),
+                        )
+                    }
+                } else {
+                    null
+                },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = colors.onPrimary,
                     checkedTrackColor = colors.primary,
@@ -187,45 +191,37 @@ fun SettingsSwitchRow(
 }
 
 @Composable
-fun SettingsDivider() {
-    val colors = LightningTheme.colors
-    HorizontalDivider(
-        color = colors.outline.copy(alpha = 0.35f),
-        modifier = Modifier.padding(start = 72.dp),
-    )
-}
-
-@Composable
 fun SettingsRadioRow(
     title: String,
     summary: String,
     selected: Boolean,
     onClick: () -> Unit,
+    shape: Shape = ExpressiveShapes.grouped(0, 1),
 ) {
     val colors = LightningTheme.colors
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = shape,
+        color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
             RadioDot(selected)
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.titleMedium,
                     color = colors.onSurface,
-                    fontWeight = FontWeight.Medium,
                 )
                 Text(
                     text = summary,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = MaterialTheme.typography.labelMedium,
                     color = colors.onSurfaceVariant,
                 )
             }
@@ -276,6 +272,7 @@ private val SweepColor = Color(0xFFB3261E)
 fun SwipeToDeleteBox(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
+    shape: Shape = MaterialTheme.shapes.extraSmall,
     content: @Composable () -> Unit,
 ) {
     val dismissState = rememberSwipeToDismissBoxState(
@@ -296,7 +293,7 @@ fun SwipeToDeleteBox(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(shape)
                     .background(SweepColor),
                 contentAlignment = Alignment.CenterEnd,
             ) {

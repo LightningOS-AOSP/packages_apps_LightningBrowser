@@ -1,6 +1,5 @@
 package com.lightning.browser.ui.settings
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,8 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Article
@@ -25,12 +22,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
+import com.lightning.browser.ui.components.GroupedColumn
+import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.home.ChipTone
 import com.lightning.browser.ui.theme.EyebrowTextStyle
+import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningColors
 import com.lightning.browser.ui.theme.LightningTheme
 
@@ -72,18 +73,9 @@ fun HistoryScreen(
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
                     )
                     Spacer(Modifier.height(4.dp))
-                    Surface(
-                        color = colors.surfaceContainer,
-                        shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Column(Modifier.padding(8.dp)) {
-                            entries.forEach { entry ->
-                                SwipeToDeleteBox(onDelete = { onDelete(entry) }) {
-                                    HistoryRow(entry)
-                                }
-                                Spacer(Modifier.height(4.dp))
-                            }
+                    GroupedColumn(entries.size) { i, shape ->
+                        SwipeToDeleteBox(onDelete = { onDelete(entries[i]) }, shape = shape) {
+                            HistoryRow(entries[i], shape = shape, index = i)
                         }
                     }
                     Spacer(Modifier.height(20.dp))
@@ -94,31 +86,30 @@ fun HistoryScreen(
 }
 
 @Composable
-private fun HistoryRow(entry: HistoryEntry) {
+private fun HistoryRow(
+    entry: HistoryEntry,
+    shape: Shape = ExpressiveShapes.grouped(0, 1),
+    index: Int = 0,
+) {
     val colors = LightningTheme.colors
     val (container, onContainer) = colors.chipColors(entry.tone)
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = shape,
+        color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
         ) {
-            Surface(
-                color = container,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.size(40.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = entry.icon,
-                        contentDescription = null,
-                        tint = onContainer,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
+            ShapedIcon(
+                entry.icon,
+                ExpressiveShapes.cycle(index),
+                container,
+                onContainer,
+                size = 40.dp,
+                iconSize = 20.dp,
+            )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(

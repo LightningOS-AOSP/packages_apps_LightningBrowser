@@ -1,12 +1,11 @@
 package com.lightning.browser.ui.home
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -14,13 +13,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -31,17 +31,21 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.lightning.browser.R
+import com.lightning.browser.ui.components.GroupedColumn
+import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.theme.EyebrowTextStyle
+import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningColors
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.tone
+import com.lightning.browser.ui.theme.WordmarkTextStyle
 
 @Composable
 fun HomeScreen(
@@ -60,9 +64,11 @@ fun HomeScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
-            .padding(top = 20.dp, bottom = 12.dp),
+            .padding(top = 24.dp, bottom = 12.dp),
     ) {
-        SearchBar(onOpenSearch = onOpenSearch, onOpenProfile = onOpenProfile)
+        HomeHeader(onOpenProfile = onOpenProfile)
+        Spacer(Modifier.height(20.dp))
+        SearchBar(onOpenSearch = onOpenSearch)
         Spacer(Modifier.height(20.dp))
         QuickAccessRow(pinnedSites, onOpenSite, onAddPinned, onRemovePinned)
         Spacer(Modifier.height(28.dp))
@@ -77,19 +83,61 @@ fun HomeScreen(
 }
 
 @Composable
-private fun SearchBar(onOpenSearch: () -> Unit, onOpenProfile: () -> Unit) {
+private fun HomeHeader(onOpenProfile: () -> Unit) {
+    val colors = LightningTheme.colors
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 4.dp),
+    ) {
+        ShapedIcon(
+            Icons.Filled.FlashOn,
+            ExpressiveShapes.Cookie9,
+            colors.primary,
+            colors.onPrimary,
+            size = 48.dp,
+            iconSize = 24.dp,
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = "LIGHTNING",
+            style = WordmarkTextStyle.copy(fontSize = 26.sp),
+            color = colors.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        Surface(
+            onClick = onOpenProfile,
+            shape = ExpressiveShapes.Burst8,
+            color = colors.secondaryContainer,
+            modifier = Modifier.size(44.dp),
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Filled.Person,
+                    contentDescription = stringResource(R.string.home_profile_avatar),
+                    tint = colors.onSecondaryContainer,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchBar(onOpenSearch: () -> Unit) {
     val colors = LightningTheme.colors
     Surface(
         color = colors.surfaceContainerHigh,
-        shape = RoundedCornerShape(50),
+        shape = CircleShape,
         onClick = onOpenSearch,
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp),
+            .height(64.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 16.dp),
+            modifier = Modifier.padding(start = 20.dp, end = 10.dp),
         ) {
             Icon(
                 imageVector = Icons.Filled.Search,
@@ -100,32 +148,24 @@ private fun SearchBar(onOpenSearch: () -> Unit, onOpenProfile: () -> Unit) {
             Spacer(Modifier.width(14.dp))
             Text(
                 text = stringResource(R.string.home_search_placeholder),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodyLarge,
                 color = colors.onSurfaceVariant,
                 modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.width(14.dp))
-            Icon(
-                imageVector = Icons.Filled.Mic,
-                contentDescription = stringResource(R.string.home_search_mic),
-                tint = colors.onSurfaceVariant,
-                modifier = Modifier.size(22.dp),
-            )
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(10.dp))
             Surface(
-                color = colors.secondaryContainer,
+                color = colors.surfaceContainer,
                 shape = CircleShape,
-                onClick = onOpenProfile,
-                modifier = Modifier.size(36.dp),
+                modifier = Modifier.size(44.dp),
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Person,
-                    contentDescription = stringResource(R.string.home_profile_avatar),
-                    tint = colors.onSecondaryContainer,
-                    modifier = Modifier
-                        .padding(8.dp)
-                        .size(20.dp),
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Filled.Mic,
+                        contentDescription = stringResource(R.string.home_search_mic),
+                        tint = colors.onSurfaceVariant,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
             }
         }
     }
@@ -139,54 +179,60 @@ private fun QuickAccessRow(
     onRemovePinned: (PinnedSite) -> Unit,
 ) {
     val colors = LightningTheme.colors
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(pinnedSites) { site ->
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        itemsIndexed(pinnedSites) { i, site ->
             val (container, onContainer) = colors.chipColors(site.tone)
-            Box(
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(container)
+                    .width(72.dp)
                     .pointerInput(site) {
                         detectTapGestures(
                             onTap = { onOpenSite(site.domain) },
                             onLongPress = { onRemovePinned(site) },
                         )
-                    }
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    },
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = site.icon,
-                        contentDescription = null,
-                        tint = onContainer,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = site.title,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = onContainer,
-                    )
-                }
+                ShapedIcon(
+                    site.icon,
+                    ExpressiveShapes.cycle(i),
+                    container,
+                    onContainer,
+                    size = 64.dp,
+                    iconSize = 28.dp,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = site.title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = colors.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
         item {
-            Surface(
-                onClick = onAddPinned,
-                shape = RoundedCornerShape(50),
-                color = colors.surfaceContainerHigh,
-                modifier = Modifier.size(92.dp),
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.width(72.dp),
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Filled.Add,
-                        contentDescription = stringResource(R.string.home_pinned_add),
-                        tint = colors.onSurfaceVariant,
-                        modifier = Modifier.size(22.dp),
-                    )
+                Surface(
+                    onClick = onAddPinned,
+                    shape = RoundedCornerShape(20.dp),
+                    color = colors.surfaceContainerHigh,
+                    modifier = Modifier.size(64.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = stringResource(R.string.home_pinned_add),
+                            tint = colors.onSurfaceVariant,
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
                 }
+                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(16.dp))
             }
         }
     }
@@ -194,62 +240,53 @@ private fun QuickAccessRow(
 
 @Composable
 private fun RecentList(pages: List<RecentPage>, onOpenSite: (String) -> Unit) {
-    val colors = LightningTheme.colors
-    Surface(
-        color = colors.surfaceContainer,
-        shape = RoundedCornerShape(18.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.padding(8.dp)) {
-            pages.forEach { page ->
-                RecentRow(page, onOpenSite)
-                Spacer(Modifier.height(4.dp))
-            }
-        }
+    GroupedColumn(pages.size) { i, shape ->
+        RecentRow(pages[i], shape, i, onOpenSite)
     }
 }
 
 @Composable
-private fun RecentRow(page: RecentPage, onOpenSite: (String) -> Unit) {
+private fun RecentRow(
+    page: RecentPage,
+    shape: androidx.compose.ui.graphics.Shape,
+    index: Int,
+    onOpenSite: (String) -> Unit,
+) {
     val colors = LightningTheme.colors
-    val (container, onContainer) = colors.chipColors(page.tone)
+    val tone = colors.tone(index)
     Surface(
         onClick = { onOpenSite(page.domain) },
-        shape = RoundedCornerShape(14.dp),
+        shape = shape,
+        color = colors.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
         ) {
-            Surface(
-                color = container,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.size(44.dp),
-            ) {
-                Icon(
-                    imageVector = page.icon,
-                    contentDescription = null,
-                    tint = onContainer,
-                    modifier = Modifier
-                        .padding(12.dp)
-                        .size(20.dp),
-                )
-            }
+            ShapedIcon(
+                page.icon,
+                ExpressiveShapes.cycle(index),
+                tone.container,
+                tone.content,
+                size = 44.dp,
+                iconSize = 22.dp,
+            )
             Spacer(Modifier.width(12.dp))
-            Column {
+            Column(Modifier.weight(1f)) {
                 Text(
                     text = page.title,
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.onSurface,
-                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
                 )
                 Text(
                     text = page.domain,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontSize = 12.sp,
+                    style = MaterialTheme.typography.labelMedium,
                     color = colors.onSurfaceVariant,
+                    maxLines = 1,
                 )
             }
         }

@@ -1,7 +1,6 @@
 package com.lightning.browser.ui.settings
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,7 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -33,13 +31,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
+import com.lightning.browser.ui.components.GroupedColumn
+import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.home.ChipTone
+import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningColors
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.tone
 
 @Composable
 fun BookmarksScreen(
@@ -87,7 +90,7 @@ fun BookmarksScreen(
                     tint = colors.onSurfaceVariant,
                 )
             },
-            shape = RoundedCornerShape(50),
+            shape = CircleShape,
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = colors.surfaceContainerHigh,
                 unfocusedContainerColor = colors.surfaceContainerHigh,
@@ -105,58 +108,47 @@ fun BookmarksScreen(
             if (folderBookmarks.isEmpty()) {
                 EmptyState()
             } else {
-                Surface(
-                    color = colors.surfaceContainer,
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(Modifier.padding(8.dp)) {
-                        folderBookmarks
-                            .filter {
-                                query.isBlank() || it.title.contains(query, ignoreCase = true) ||
-                                    it.domain.contains(query, ignoreCase = true)
-                            }
-                            .forEach { bookmark ->
-                                SwipeToDeleteBox(onDelete = { onDelete(bookmark) }) {
-                                    BookmarkRow(bookmark, onClick = { onOpen(bookmark) })
-                                }
-                                Spacer(Modifier.height(4.dp))
-                            }
+                val visible = folderBookmarks.filter {
+                    query.isBlank() || it.title.contains(query, ignoreCase = true) ||
+                        it.domain.contains(query, ignoreCase = true)
+                }
+                GroupedColumn(visible.size) { i, shape ->
+                    SwipeToDeleteBox(onDelete = { onDelete(visible[i]) }, shape = shape) {
+                        BookmarkRow(
+                            bookmark = visible[i],
+                            onClick = { onOpen(visible[i]) },
+                            shape = shape,
+                            index = i,
+                        )
                     }
                 }
             }
         } else if (bookmarks.isEmpty()) {
             EmptyState()
         } else {
-            Surface(
-                color = colors.surfaceContainer,
-                shape = RoundedCornerShape(18.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(Modifier.padding(8.dp)) {
-                    folders.forEach { folder ->
-                        FolderRow(
-                            folder = BookmarkFolder(folder, bookmarks.count { it.folder == folder }),
-                            onClick = { openFolder = folder },
+            val rootList = bookmarks.filter { it.folder.isBlank() }.filter {
+                query.isBlank() || it.title.contains(query, ignoreCase = true) ||
+                    it.domain.contains(query, ignoreCase = true)
+            }
+            GroupedColumn(folders.size + rootList.size) { i, shape ->
+                if (i < folders.size) {
+                    val folder = folders[i]
+                    FolderRow(
+                        folder = BookmarkFolder(folder, bookmarks.count { it.folder == folder }),
+                        onClick = { openFolder = folder },
+                        shape = shape,
+                        index = i,
+                    )
+                } else {
+                    val bookmark = rootList[i - folders.size]
+                    SwipeToDeleteBox(onDelete = { onDelete(bookmark) }, shape = shape) {
+                        BookmarkRow(
+                            bookmark = bookmark,
+                            onClick = { onOpen(bookmark) },
+                            shape = shape,
+                            index = i,
                         )
-                        Spacer(Modifier.height(4.dp))
                     }
-                    val rootList = bookmarks.filter { it.folder.isBlank() }
-                    if (folders.isNotEmpty() && rootList.isNotEmpty()) {
-                        SettingsDivider()
-                        Spacer(Modifier.height(4.dp))
-                    }
-                    rootList
-                        .filter {
-                            query.isBlank() || it.title.contains(query, ignoreCase = true) ||
-                                it.domain.contains(query, ignoreCase = true)
-                        }
-                        .forEach { bookmark ->
-                            SwipeToDeleteBox(onDelete = { onDelete(bookmark) }) {
-                                BookmarkRow(bookmark, onClick = { onOpen(bookmark) })
-                            }
-                            Spacer(Modifier.height(4.dp))
-                        }
                 }
             }
         }
@@ -164,31 +156,32 @@ fun BookmarksScreen(
 }
 
 @Composable
-private fun FolderRow(folder: BookmarkFolder, onClick: () -> Unit) {
+private fun FolderRow(
+    folder: BookmarkFolder,
+    onClick: () -> Unit,
+    shape: Shape = ExpressiveShapes.grouped(0, 1),
+    index: Int = 0,
+) {
     val colors = LightningTheme.colors
+    val tone = colors.tone(index % 3)
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = shape,
+        color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
         ) {
-            Surface(
-                color = colors.surfaceContainerHigh,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.size(40.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Filled.Folder,
-                        contentDescription = null,
-                        tint = colors.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
+            ShapedIcon(
+                Icons.Filled.Folder,
+                ExpressiveShapes.cycle(index),
+                tone.container,
+                tone.content,
+                size = 40.dp,
+                iconSize = 20.dp,
+            )
             Spacer(Modifier.width(12.dp))
             Text(
                 text = folder.name,
@@ -214,32 +207,32 @@ private fun FolderRow(folder: BookmarkFolder, onClick: () -> Unit) {
 }
 
 @Composable
-private fun BookmarkRow(bookmark: Bookmark, onClick: () -> Unit) {
+private fun BookmarkRow(
+    bookmark: Bookmark,
+    onClick: () -> Unit,
+    shape: Shape = ExpressiveShapes.grouped(0, 1),
+    index: Int = 0,
+) {
     val colors = LightningTheme.colors
     val (container, onContainer) = colors.chipColors(bookmark.tone)
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = shape,
+        color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
         ) {
-            Surface(
-                color = container,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.size(40.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = bookmark.icon,
-                        contentDescription = null,
-                        tint = onContainer,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
+            ShapedIcon(
+                bookmark.icon,
+                ExpressiveShapes.cycle(index),
+                container,
+                onContainer,
+                size = 40.dp,
+                iconSize = 20.dp,
+            )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(

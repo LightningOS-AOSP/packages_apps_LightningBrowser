@@ -8,27 +8,22 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
+import com.lightning.browser.ui.components.MorphButton
+import com.lightning.browser.ui.components.TonalIconButton
 import com.lightning.browser.ui.theme.LightningTheme
-
-private val BAR_HEIGHT = 46.dp
 
 @Composable
 fun LightningBottomBar(
@@ -46,50 +41,48 @@ fun LightningBottomBar(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 12.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Surface(
-            color = colors.surfaceContainer,
-            shape = RoundedCornerShape(24.dp),
-            shadowElevation = 8.dp,
+            color = colors.surfaceContainerHighest,
+            shape = RoundedCornerShape(36.dp),
+            shadowElevation = 10.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(BAR_HEIGHT),
+                .height(72.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp),
             ) {
-                BarIconButton(Icons.AutoMirrored.Filled.ArrowBack, R.string.bar_back, backEnabled, onBack)
-                BarIconButton(Icons.Filled.BookmarkBorder, R.string.bar_bookmark, true, onBookmark)
-                BarIconButton(Icons.Filled.FlashOn, R.string.bar_new_tab, true, onNewTab, colors.primary)
-                BarIconButton(Icons.Filled.MoreVert, R.string.bar_menu, true, onMenu)
-                BarIconButton(Icons.AutoMirrored.Filled.ArrowForward, R.string.bar_forward, forwardEnabled, onForward)
+                TonalIconButton(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    stringResource(R.string.bar_back),
+                    onBack,
+                    enabled = backEnabled,
+                )
+                TonalIconButton(
+                    Icons.Filled.BookmarkBorder,
+                    stringResource(R.string.bar_bookmark),
+                    onBookmark,
+                )
+                MorphButton(onNewTab, stringResource(R.string.bar_new_tab), size = 60.dp)
+                TonalIconButton(
+                    Icons.Filled.MoreVert,
+                    stringResource(R.string.bar_menu),
+                    onMenu,
+                )
+                TonalIconButton(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    stringResource(R.string.bar_forward),
+                    onForward,
+                    enabled = forwardEnabled,
+                )
             }
         }
-    }
-}
-
-@Composable
-private fun BarIconButton(
-    icon: ImageVector,
-    descRes: Int,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    tintOverride: androidx.compose.ui.graphics.Color? = null,
-) {
-    val colors = LightningTheme.colors
-    IconButton(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.size(42.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = stringResource(descRes),
-            tint = tintOverride ?: if (enabled) colors.onSurface else colors.onSurfaceVariant,
-            modifier = Modifier.size(22.dp),
-        )
     }
 }

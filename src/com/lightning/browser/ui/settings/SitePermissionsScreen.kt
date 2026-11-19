@@ -11,13 +11,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -30,9 +29,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
+import com.lightning.browser.ui.components.ShapedIcon
+import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
 
 @Composable
@@ -66,27 +66,28 @@ fun SitePermissionsScreen(
         )
         Spacer(Modifier.height(20.dp))
         Surface(
-            color = colors.surfaceContainer,
-            shape = RoundedCornerShape(18.dp),
+            color = colors.surfaceContainerHigh,
+            shape = MaterialTheme.shapes.large,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Lock,
-                    contentDescription = null,
-                    tint = if (hasCredentials) colors.primary else colors.onSurfaceVariant,
-                    modifier = Modifier.size(22.dp),
+                ShapedIcon(
+                    Icons.Filled.Lock,
+                    ExpressiveShapes.Cookie9,
+                    if (hasCredentials) colors.primaryContainer else colors.surfaceContainer,
+                    if (hasCredentials) colors.onPrimaryContainer else colors.onSurfaceVariant,
+                    size = 44.dp,
+                    iconSize = 22.dp,
                 )
                 Spacer(Modifier.width(14.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = stringResource(R.string.site_permissions_creds_title),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.titleMedium,
                         color = colors.onSurface,
-                        fontWeight = FontWeight.Medium,
                     )
                     Text(
                         text = stringResource(
@@ -96,7 +97,7 @@ fun SitePermissionsScreen(
                                 R.string.site_permissions_none_stored
                             },
                         ),
-                        style = MaterialTheme.typography.bodySmall,
+                        style = MaterialTheme.typography.labelMedium,
                         color = colors.onSurfaceVariant,
                     )
                 }
@@ -114,7 +115,7 @@ fun SitePermissionsScreen(
                 containerColor = colors.primary,
                 contentColor = colors.onPrimary,
             ),
-            shape = RoundedCornerShape(50),
+            shape = CircleShape,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp),

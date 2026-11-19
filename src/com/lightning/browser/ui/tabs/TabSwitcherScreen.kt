@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,14 +16,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LargeFloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -31,13 +30,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.lightning.browser.R
+import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.theme.EyebrowTextStyle
+import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
 
 @Composable
@@ -58,11 +56,24 @@ fun TabSwitcherScreen(
                     .padding(horizontal = 20.dp, vertical = 8.dp),
             ) {
                 Text(
-                    text = stringResource(R.string.tabs_title) + " · " + tabs.size,
-                    style = MaterialTheme.typography.titleMedium,
+                    text = stringResource(R.string.tabs_title),
+                    style = MaterialTheme.typography.headlineLarge,
                     color = colors.onSurface,
-                    modifier = Modifier.weight(1f),
                 )
+                Spacer(Modifier.width(12.dp))
+                Surface(
+                    shape = CircleShape,
+                    color = colors.primaryContainer,
+                    modifier = Modifier.weight(1f, fill = false),
+                ) {
+                    Text(
+                        text = tabs.size.toString(),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = colors.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    )
+                }
+                Spacer(Modifier.weight(1f))
                 TextButton(onClick = onCloseAll) {
                     Text(
                         text = stringResource(R.string.tabs_close_all),
@@ -79,30 +90,38 @@ fun TabSwitcherScreen(
                     columns = GridCells.Fixed(2),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    contentPadding = PaddingValues(
                         start = 20.dp, top = 8.dp, end = 20.dp, bottom = 96.dp,
                     ),
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(tabs.size) { index ->
                         val tab = tabs[index]
-                        TabCard(tab, onClose = { onCloseTab(index) }, onOpen = { onOpenTab(index) })
+                        TabCard(
+                            tab = tab,
+                            index = index,
+                            onClose = { onCloseTab(index) },
+                            onOpen = { onOpenTab(index) },
+                        )
                     }
                 }
             }
         }
 
-        FloatingActionButton(
+        LargeFloatingActionButton(
             onClick = onNewTab,
-            shape = RoundedCornerShape(20.dp),
+            shape = ExpressiveShapes.Cookie9,
             containerColor = colors.primary,
             contentColor = colors.onPrimary,
-            elevation = FloatingActionButtonDefaults.elevation(6.dp),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 20.dp, bottom = 24.dp),
         ) {
-            Icon(Icons.Filled.Add, contentDescription = stringResource(R.string.bar_new_tab))
+            Icon(
+                Icons.Filled.Add,
+                contentDescription = stringResource(R.string.bar_new_tab),
+                modifier = Modifier.size(36.dp),
+            )
         }
     }
 }
@@ -120,7 +139,7 @@ private fun EmptyTabs() {
 }
 
 @Composable
-private fun TabCard(tab: BrowserTab, onClose: () -> Unit, onOpen: () -> Unit) {
+private fun TabCard(tab: BrowserTab, index: Int, onClose: () -> Unit, onOpen: () -> Unit) {
     val colors = LightningTheme.colors
     // Private tabs get the violet secondary wash so they stand out from the
     // normal surface ones.
@@ -129,7 +148,7 @@ private fun TabCard(tab: BrowserTab, onClose: () -> Unit, onOpen: () -> Unit) {
 
     Surface(
         onClick = onOpen,
-        shape = RoundedCornerShape(18.dp),
+        shape = ExpressiveShapes.diagonal(index, big = 32, small = 10),
         color = cardColor,
         contentColor = onCardColor,
     ) {
@@ -139,7 +158,7 @@ private fun TabCard(tab: BrowserTab, onClose: () -> Unit, onOpen: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(110.dp)
-                    .background(Color.Transparent),
+                    .background(colors.surfaceContainerHighest),
             ) {
                 Icon(
                     imageVector = Icons.Filled.FlashOn,
@@ -151,53 +170,46 @@ private fun TabCard(tab: BrowserTab, onClose: () -> Unit, onOpen: () -> Unit) {
                 )
                 Surface(
                     onClick = onClose,
-                    color = colors.surface.copy(alpha = 0.7f),
-                    shape = CircleShape,
+                    color = colors.surface.copy(alpha = 0.85f),
+                    shape = ExpressiveShapes.Burst8,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(6.dp),
+                        .padding(8.dp)
+                        .size(30.dp),
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Close,
-                        contentDescription = stringResource(R.string.tabs_close_tab),
-                        tint = colors.onSurface,
-                        modifier = Modifier
-                            .padding(6.dp)
-                            .size(16.dp),
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.tabs_close_tab),
+                            tint = colors.onSurface,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
                 }
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             ) {
-                Surface(
-                    color = colors.primaryContainer,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.size(24.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.FlashOn,
-                        contentDescription = null,
-                        tint = colors.onPrimaryContainer,
-                        modifier = Modifier
-                            .padding(6.dp)
-                            .size(12.dp),
-                    )
-                }
+                ShapedIcon(
+                    Icons.Filled.FlashOn,
+                    ExpressiveShapes.Cookie9,
+                    colors.primaryContainer,
+                    colors.onPrimaryContainer,
+                    size = 28.dp,
+                    iconSize = 14.dp,
+                )
                 Spacer(Modifier.width(8.dp))
                 Column {
                     Text(
                         text = tab.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium,
+                        style = MaterialTheme.typography.labelLarge,
                         maxLines = 1,
                     )
                     if (tab.domain.isNotEmpty()) {
                         Text(
                             text = tab.domain,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontSize = 11.sp,
+                            style = MaterialTheme.typography.labelMedium,
                             color = colors.onSurfaceVariant,
                             maxLines = 1,
                         )

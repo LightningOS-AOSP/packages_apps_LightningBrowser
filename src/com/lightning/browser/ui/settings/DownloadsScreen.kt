@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FileDownload
@@ -34,14 +33,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
+import com.lightning.browser.ui.components.GroupedColumn
+import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.browser.BrowserDownloads
 import com.lightning.browser.ui.theme.EyebrowTextStyle
+import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.tone
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.delay
@@ -91,21 +95,14 @@ fun DownloadsScreen(
                     modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
                 )
                 Spacer(Modifier.height(4.dp))
-                Surface(
-                    color = colors.surfaceContainer,
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Column(Modifier.padding(8.dp)) {
-                        list.forEach { item ->
-                            DownloadRow(
-                                item = item,
-                                onPause = { BrowserDownloads.pause(context, item.downloadId) },
-                                onResume = { BrowserDownloads.resume(context, item.downloadId) },
-                            )
-                            Spacer(Modifier.height(4.dp))
-                        }
-                    }
+                GroupedColumn(list.size) { i, shape ->
+                    DownloadRow(
+                        item = list[i],
+                        onPause = { BrowserDownloads.pause(context, list[i].downloadId) },
+                        onResume = { BrowserDownloads.resume(context, list[i].downloadId) },
+                        shape = shape,
+                        index = i,
+                    )
                 }
                 Spacer(Modifier.height(20.dp))
             }
@@ -119,28 +116,22 @@ private fun StorageAccessCard(
 ) {
     val colors = LightningTheme.colors
     Surface(
-        color = colors.surfaceContainer,
-        shape = RoundedCornerShape(18.dp),
+        color = colors.surfaceContainerLow,
+        shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
         ) {
-            Surface(
-                color = colors.primaryContainer,
-                shape = CircleShape,
-                modifier = Modifier.size(40.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Filled.FolderOpen,
-                        contentDescription = null,
-                        tint = colors.onPrimaryContainer,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
+            ShapedIcon(
+                Icons.Filled.FolderOpen,
+                ExpressiveShapes.Clover4,
+                colors.primaryContainer,
+                colors.onPrimaryContainer,
+                size = 40.dp,
+                iconSize = 20.dp,
+            )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
@@ -209,28 +200,26 @@ private fun DownloadRow(
     item: DownloadItem,
     onPause: () -> Unit = {},
     onResume: () -> Unit = {},
+    shape: Shape = ExpressiveShapes.grouped(0, 1),
+    index: Int = 0,
 ) {
     val colors = LightningTheme.colors
+    val tone = colors.tone(index % 3)
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = shape,
+        color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Column(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+        Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    color = colors.surfaceContainerHigh,
-                    shape = CircleShape,
-                    modifier = Modifier.size(40.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Filled.FileDownload,
-                            contentDescription = null,
-                            tint = colors.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
+                ShapedIcon(
+                    Icons.Filled.FileDownload,
+                    ExpressiveShapes.cycle(index),
+                    tone.container,
+                    tone.content,
+                    size = 40.dp,
+                    iconSize = 20.dp,
+                )
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(

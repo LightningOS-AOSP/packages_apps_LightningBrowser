@@ -15,12 +15,6 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +27,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -67,8 +60,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -78,6 +69,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.lightning.browser.R
+import com.lightning.browser.ui.components.GroupedColumn
+import com.lightning.browser.ui.components.MorphLoader
+import com.lightning.browser.ui.components.ShapedIcon
+import com.lightning.browser.ui.components.TonalIconButton
 import com.lightning.browser.ui.home.ChipTone
 import com.lightning.browser.ui.home.RecentPage
 import com.lightning.browser.ui.settings.Bookmark
@@ -85,8 +80,9 @@ import com.lightning.browser.ui.settings.DnsProvider
 import com.lightning.browser.ui.settings.SearchEngine
 import com.lightning.browser.ui.settings.searchUrl
 import com.lightning.browser.ui.tabs.BrowserTab
-import com.lightning.browser.ui.theme.LightningColors
+import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.tone
 import java.io.ByteArrayInputStream
 
 data class TabNavState(val canGoBack: Boolean = false, val canGoForward: Boolean = false)
@@ -250,46 +246,8 @@ fun BrowserScreen(
 
 @Composable
 private fun LightningLoadingIndicator(modifier: Modifier = Modifier) {
-    val colors = LightningTheme.colors
-    val transition = rememberInfiniteTransition()
-    val pulse by transition.animateFloat(
-        initialValue = 0.45f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-    )
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Box(
-            modifier = Modifier
-                .size(140.dp)
-                .graphicsLayer {
-                    val s = 0.8f + 0.2f * pulse
-                    scaleX = s
-                    scaleY = s
-                    alpha = 0.10f + 0.35f * pulse
-                }
-                .background(
-                    brush = Brush.radialGradient(
-                        listOf(colors.primary.copy(alpha = 0.55f), Color.Transparent),
-                    ),
-                    shape = CircleShape,
-                ),
-        )
-        Icon(
-            imageVector = Icons.Filled.FlashOn,
-            contentDescription = stringResource(R.string.browser_loading),
-            tint = colors.primary,
-            modifier = Modifier
-                .size(56.dp)
-                .graphicsLayer {
-                    val s = 0.85f + 0.15f * pulse
-                    scaleX = s
-                    scaleY = s
-                    alpha = 0.4f + 0.6f * pulse
-                },
-        )
+        MorphLoader(description = stringResource(R.string.browser_loading))
     }
 }
 
@@ -520,7 +478,7 @@ private fun UrlRow(
                 ),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                 keyboardActions = KeyboardActions(onGo = { onSubmit() }),
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(28.dp),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = colors.surfaceContainerHigh,
                     unfocusedContainerColor = colors.surfaceContainerHigh,
@@ -543,33 +501,42 @@ private fun UrlRow(
             Surface(
                 onClick = onEditStart,
                 color = colors.surfaceContainerHigh,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(26.dp),
                 modifier = Modifier
                     .weight(1f)
-                    .height(48.dp),
+                    .height(52.dp),
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(start = 16.dp, end = 4.dp),
+                        .padding(start = 8.dp, end = 6.dp),
                 ) {
+                    ShapedIcon(
+                        Icons.Filled.FlashOn,
+                        ExpressiveShapes.Cookie9,
+                        colors.primaryContainer,
+                        colors.onPrimaryContainer,
+                        size = 36.dp,
+                        iconSize = 18.dp,
+                    )
+                    Spacer(Modifier.width(10.dp))
                     Text(
                         text = domain.ifEmpty { stringResource(R.string.home_search_placeholder) },
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.titleMedium,
                         color = if (domain.isNotEmpty()) colors.onSurface else colors.onSurfaceVariant,
                         maxLines = 1,
                         modifier = Modifier.weight(1f),
                     )
                     if (domain.isNotEmpty()) {
-                        IconButton(onClick = onRefresh) {
-                            Icon(
-                                imageVector = Icons.Filled.Refresh,
-                                contentDescription = stringResource(R.string.browser_refresh),
-                                tint = colors.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
+                        TonalIconButton(
+                            Icons.Filled.Refresh,
+                            stringResource(R.string.browser_refresh),
+                            onRefresh,
+                            size = 40.dp,
+                            iconSize = 20.dp,
+                            tint = colors.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -595,72 +562,56 @@ private fun Suggestions(
         .distinctBy { it.domain }
         .filter { query.isBlank() || it.title.contains(query, ignoreCase = true) || it.domain.contains(query, ignoreCase = true) }
 
+    val entries = buildList {
+        if (query.isNotEmpty()) {
+            add(
+                Suggestion(
+                    title = stringResource(R.string.browser_suggestion_search, query),
+                    domain = "",
+                    icon = Icons.Filled.Search,
+                    tone = ChipTone.PRIMARY,
+                ),
+            )
+        }
+        searches.forEach { term ->
+            add(
+                Suggestion(
+                    title = term,
+                    domain = stringResource(R.string.browser_suggestion_search, term),
+                    icon = Icons.Filled.Search,
+                    tone = ChipTone.PRIMARY,
+                ),
+            )
+        }
+        addAll(sites)
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(colors.surface)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp)
+            .padding(top = 4.dp),
     ) {
-        if (query.isNotEmpty()) {
-            Surface(
-                onClick = { onSearch(query) },
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
-                ) {
-                    Surface(
-                        color = colors.primaryContainer,
-                        shape = CircleShape,
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Filled.Search,
-                                contentDescription = null,
-                                tint = colors.onPrimaryContainer,
-                                modifier = Modifier.size(20.dp),
-                            )
-                        }
-                    }
-                    Spacer(Modifier.width(14.dp))
-                    Text(
-                        text = stringResource(R.string.browser_suggestion_search, query),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.onSurface,
-                        fontWeight = FontWeight.Medium,
-                    )
-                }
-            }
-            Spacer(Modifier.height(4.dp))
-        }
-        searches.forEach { term ->
-            SuggestionRow(
-                icon = Icons.Filled.Search,
-                title = term,
-                subtitle = stringResource(R.string.browser_suggestion_search, term),
-                tone = ChipTone.PRIMARY,
-                onClick = { onSearch(term) },
-                colors = colors,
-            )
-            Spacer(Modifier.height(4.dp))
-        }
-        if (searches.isNotEmpty() && sites.isNotEmpty()) {
-            Spacer(Modifier.height(8.dp))
-        }
-        sites.forEach { entry ->
+        GroupedColumn(entries.size) { index, shape ->
+            val entry = entries[index]
+            val isSearchAction = index == 0 && query.isNotEmpty()
             SuggestionRow(
                 icon = entry.icon,
                 title = entry.title,
                 subtitle = entry.domain,
-                tone = entry.tone,
-                onClick = { onOpenSuggestion(entry.domain) },
-                colors = colors,
+                shape = shape,
+                index = index,
+                onClick = {
+                    when {
+                        isSearchAction -> onSearch(query)
+                        entry.domain.isEmpty() || index < searches.size + (if (query.isEmpty()) 0 else 1) ->
+                            onSearch(entry.title)
+                        else -> onOpenSuggestion(entry.domain)
+                    }
+                },
             )
-            Spacer(Modifier.height(4.dp))
         }
     }
 }
@@ -670,49 +621,46 @@ private fun SuggestionRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    tone: ChipTone,
+    shape: androidx.compose.ui.graphics.Shape,
+    index: Int,
     onClick: () -> Unit,
-    colors: LightningColors,
 ) {
+    val colors = LightningTheme.colors
+    val tone = colors.tone(index)
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = shape,
+        color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
         ) {
-            val (container, onContainer) = colors.chipColors(tone)
-            Surface(
-                color = container,
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.size(40.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = onContainer,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
+            ShapedIcon(
+                icon,
+                ExpressiveShapes.cycle(index),
+                tone.container,
+                tone.content,
+                size = 40.dp,
+                iconSize = 20.dp,
+            )
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.titleMedium,
                     color = colors.onSurface,
-                    fontWeight = FontWeight.Medium,
                     maxLines = 1,
                 )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant,
-                    maxLines = 1,
-                )
+                if (subtitle.isNotEmpty()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }
@@ -722,10 +670,14 @@ private fun SuggestionRow(
 private fun EmptyBrowser() {
     val colors = LightningTheme.colors
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(
-            text = stringResource(R.string.home_search_placeholder),
-            style = MaterialTheme.typography.bodyMedium,
-            color = colors.onSurfaceVariant,
+        ShapedIcon(
+            Icons.Filled.FlashOn,
+            ExpressiveShapes.Cookie9,
+            colors.primaryContainer,
+            colors.onPrimaryContainer,
+            size = 96.dp,
+            iconSize = 44.dp,
+            contentDescription = stringResource(R.string.home_search_placeholder),
         )
     }
 }
@@ -743,13 +695,6 @@ private data class PendingDownload(
     val contentDisposition: String?,
     val mimeType: String?,
 )
-
-private fun LightningColors.chipColors(tone: ChipTone): Pair<Color, Color> =
-    when (tone) {
-        ChipTone.PRIMARY -> primaryContainer to onPrimaryContainer
-        ChipTone.SECONDARY -> secondaryContainer to onSecondaryContainer
-        ChipTone.TERTIARY -> tertiaryContainer to onTertiaryContainer
-    }
 
 private fun toUrl(text: String, engine: SearchEngine): String {
     val trimmed = text.trim()

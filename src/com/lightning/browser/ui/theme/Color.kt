@@ -22,6 +22,12 @@ data class LightningColors(
     val onTertiaryContainer: Color,
     val outline: Color,
     val outlineVariant: Color,
+    val surfaceContainerLow: Color,
+    val surfaceContainerHighest: Color,
+    val secondary: Color,
+    val onSecondary: Color,
+    val tertiary: Color,
+    val onTertiary: Color,
 )
 
 val lightColors = LightningColors(
@@ -40,6 +46,12 @@ val lightColors = LightningColors(
     onTertiaryContainer = Color(0xFF00201F),
     outline = Color(0xFFCAC4D0),
     outlineVariant = Color(0xFFC9C5D0),
+    surfaceContainerLow = Color(0xFFFBF7FD),
+    surfaceContainerHighest = Color(0xFFDDD6E2),
+    secondary = Color(0xFF6B4FA3),
+    onSecondary = Color(0xFFFFFFFF),
+    tertiary = Color(0xFF2E7D7D),
+    onTertiary = Color(0xFFFFFFFF),
 )
 
 val darkColors = LightningColors(
@@ -58,4 +70,20 @@ val darkColors = LightningColors(
     onTertiaryContainer = Color(0xFF9DEEFF),
     outline = Color(0xFF49454F),
     outlineVariant = Color(0xFF494550),
+    surfaceContainerLow = Color(0xFF1D1B20),
+    surfaceContainerHighest = Color(0xFF36343B),
+    secondary = Color(0xFFD0BCFF),
+    onSecondary = Color(0xFF381E72),
+    tertiary = Color(0xFF80D5D3),
+    onTertiary = Color(0xFF003736),
 )
+
+data class Tone(val container: Color, val content: Color)
+
+/** Cycles primary / secondary / tertiary / solid-primary tones by index. */
+fun LightningColors.tone(index: Int): Tone = when (index.mod(4)) {
+    0 -> Tone(primaryContainer, onPrimaryContainer)
+    1 -> Tone(secondaryContainer, onSecondaryContainer)
+    2 -> Tone(tertiaryContainer, onTertiaryContainer)
+    else -> Tone(primary, onPrimary)
+}

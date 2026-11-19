@@ -1,15 +1,12 @@
 package com.lightning.browser.ui.root
 
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
@@ -18,21 +15,21 @@ import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
+import com.lightning.browser.ui.components.ShapedIcon
+import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.tone
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,61 +45,98 @@ fun AppMenuSheet(
         ModalBottomSheet(
             onDismissRequest = onHide,
             sheetState = sheetState,
-            containerColor = LightningTheme.colors.surfaceContainer,
+            shape = RoundedCornerShape(topStart = 48.dp, topEnd = 48.dp),
+            containerColor = LightningTheme.colors.surfaceContainerLow,
         ) {
+            val actions = buildList {
+                if (copyUrlVisible) {
+                    add(
+                        MenuAction(Icons.Filled.ContentCopy, stringResource(R.string.menu_copy_url)) {
+                            onCopyUrl()
+                            onHide()
+                        },
+                    )
+                }
+                add(
+                    MenuAction(Icons.Filled.Bookmark, stringResource(R.string.bookmarks_title)) {
+                        onOpen(LightningScreen.BOOKMARKS)
+                    },
+                )
+                add(
+                    MenuAction(Icons.Filled.History, stringResource(R.string.history_title)) {
+                        onOpen(LightningScreen.HISTORY)
+                    },
+                )
+                add(
+                    MenuAction(Icons.Filled.FileDownload, stringResource(R.string.settings_downloads)) {
+                        onOpen(LightningScreen.DOWNLOADS)
+                    },
+                )
+                add(
+                    MenuAction(Icons.Filled.Settings, stringResource(R.string.settings_title)) {
+                        onOpen(LightningScreen.SETTINGS)
+                    },
+                )
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (copyUrlVisible) {
-                    SheetItem(Icons.Filled.ContentCopy, stringResource(R.string.menu_copy_url), {
-                        onCopyUrl()
-                        onHide()
-                    })
+                actions.chunked(2).forEachIndexed { rowIndex, row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEachIndexed { columnIndex, action ->
+                            ActionTile(
+                                action = action,
+                                index = rowIndex * 2 + columnIndex,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        if (row.size == 1) {
+                            Spacer(Modifier.weight(1f))
+                        }
+                    }
                 }
-                SheetItem(Icons.Filled.Bookmark, stringResource(R.string.bookmarks_title), { onOpen(LightningScreen.BOOKMARKS) })
-                SheetItem(Icons.Filled.History, stringResource(R.string.history_title), { onOpen(LightningScreen.HISTORY) })
-                SheetItem(Icons.Filled.FileDownload, stringResource(R.string.settings_downloads), { onOpen(LightningScreen.DOWNLOADS) })
-                SheetItem(Icons.Filled.Settings, stringResource(R.string.settings_title), { onOpen(LightningScreen.SETTINGS) })
             }
         }
     }
 }
 
+private data class MenuAction(
+    val icon: ImageVector,
+    val title: String,
+    val onClick: () -> Unit,
+)
+
 @Composable
-private fun SheetItem(icon: ImageVector, title: String, onClick: () -> Unit) {
+private fun ActionTile(action: MenuAction, index: Int, modifier: Modifier = Modifier) {
     val colors = LightningTheme.colors
+    val tone = colors.tone(index % 3)
     Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
-        modifier = Modifier.fillMaxWidth(),
+        onClick = action.onClick,
+        shape = ExpressiveShapes.diagonal(index, 32, 10),
+        color = tone.container,
+        modifier = modifier.height(88.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            Surface(
-                color = colors.primaryContainer,
-                shape = CircleShape,
-                modifier = Modifier.size(40.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = colors.onPrimaryContainer,
-                        modifier = Modifier.size(20.dp),
-                    )
-                }
-            }
-            Spacer(Modifier.width(14.dp))
+            ShapedIcon(
+                action.icon,
+                ExpressiveShapes.cycle(index),
+                colors.surface.copy(alpha = 0.6f),
+                tone.content,
+                size = 40.dp,
+                iconSize = 20.dp,
+            )
             Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = colors.onSurface,
-                fontWeight = FontWeight.Medium,
+                text = action.title,
+                style = MaterialTheme.typography.labelLarge,
+                color = tone.content,
+                maxLines = 1,
             )
         }
     }

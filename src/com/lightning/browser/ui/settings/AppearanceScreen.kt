@@ -3,6 +3,8 @@ package com.lightning.browser.ui.settings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -23,13 +25,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
+import com.lightning.browser.ui.theme.LightningMotion
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.ThemeMode
 import com.lightning.browser.ui.theme.lightningColorsFor
@@ -59,35 +62,40 @@ fun AppearanceScreen(
 @Composable
 private fun SegmentedThemePicker(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) {
     val colors = LightningTheme.colors
-    Surface(
-        color = colors.surfaceContainerHigh,
-        shape = RoundedCornerShape(50),
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .height(48.dp),
+            .height(52.dp),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(4.dp),
-        ) {
-            ThemeMode.entries.forEach { mode ->
-                val isSelected = mode == selected
-                Surface(
-                    onClick = { onSelect(mode) },
-                    shape = RoundedCornerShape(50),
-                    color = if (isSelected) colors.primary else Color.Transparent,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = mode.label(),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = if (isSelected) colors.onPrimary else colors.onSurfaceVariant,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        )
-                    }
+        ThemeMode.entries.forEachIndexed { i, mode ->
+            val isSelected = mode == selected
+            val inner by animateDpAsState(
+                if (isSelected) 26.dp else 12.dp,
+                LightningMotion.defaultSpatial(),
+                label = "seg",
+            )
+            val last = ThemeMode.entries.lastIndex
+            val shape = RoundedCornerShape(
+                topStart = if (i == 0) 26.dp else inner,
+                bottomStart = if (i == 0) 26.dp else inner,
+                topEnd = if (i == last) 26.dp else inner,
+                bottomEnd = if (i == last) 26.dp else inner,
+            )
+            Surface(
+                onClick = { onSelect(mode) },
+                shape = shape,
+                color = if (isSelected) colors.primary else colors.surfaceContainerHigh,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = mode.label(),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (isSelected) colors.onPrimary else colors.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -107,7 +115,7 @@ private fun ColumnScope.ThemePreview(themeMode: ThemeMode) {
     val preview = lightningColorsFor(dark)
     Surface(
         color = preview.surface,
-        shape = RoundedCornerShape(28.dp),
+        shape = MaterialTheme.shapes.large,
         border = BorderStroke(1.dp, preview.outline),
         modifier = Modifier
             .align(Alignment.CenterHorizontally)
@@ -134,7 +142,7 @@ private fun ColumnScope.ThemePreview(themeMode: ThemeMode) {
             Spacer(Modifier.height(14.dp))
             Surface(
                 color = preview.surfaceContainerHigh,
-                shape = RoundedCornerShape(50),
+                shape = CircleShape,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(28.dp),
@@ -155,7 +163,7 @@ private fun ColumnScope.ThemePreview(themeMode: ThemeMode) {
 private fun PreviewTile(tileColor: Color, dotColor: Color) {
     Surface(
         color = tileColor,
-        shape = RoundedCornerShape(12.dp),
+        shape = MaterialTheme.shapes.extraSmall,
         modifier = Modifier
             .fillMaxWidth()
             .height(44.dp),
@@ -174,7 +182,7 @@ private fun PreviewTile(tileColor: Color, dotColor: Color) {
                 modifier = Modifier
                     .weight(1f)
                     .height(8.dp)
-                    .background(dotColor.copy(alpha = 0.4f), RoundedCornerShape(4.dp)),
+                    .background(dotColor.copy(alpha = 0.4f), CircleShape),
             )
         }
     }

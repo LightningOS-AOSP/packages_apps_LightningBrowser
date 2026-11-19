@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -27,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
+import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.theme.LightningTheme
 
 @Composable
@@ -60,55 +60,38 @@ fun DnsScreen(
             modifier = Modifier.padding(horizontal = 12.dp),
         )
         Spacer(Modifier.height(20.dp))
-        Surface(
-            color = colors.surfaceContainer,
-            shape = RoundedCornerShape(18.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(Modifier.padding(8.dp)) {
-                DnsProvider.entries.forEachIndexed { index, choice ->
-                    val summary = if (choice == DnsProvider.CUSTOM && choice == provider && customUrl.isNotBlank()) {
-                        customUrl
-                    } else {
-                        stringResource(choice.summaryRes)
-                    }
-                    SettingsRadioRow(
-                        title = stringResource(choice.labelRes),
-                        summary = summary,
-                        selected = choice == provider,
-                        onClick = {
-                            if (choice == DnsProvider.CUSTOM) {
-                                draft = customUrl
-                                showCustomDialog = true
-                            }
-                            onProviderSelect(choice)
-                        },
-                    )
-                    if (index < DnsProvider.entries.lastIndex) {
-                        SettingsDivider()
-                    }
-                }
+        GroupedColumn(DnsProvider.entries.size) { index, shape ->
+            val choice = DnsProvider.entries[index]
+            val summary = if (choice == DnsProvider.CUSTOM && choice == provider && customUrl.isNotBlank()) {
+                customUrl
+            } else {
+                stringResource(choice.summaryRes)
             }
+            SettingsRadioRow(
+                title = stringResource(choice.labelRes),
+                summary = summary,
+                selected = choice == provider,
+                onClick = {
+                    if (choice == DnsProvider.CUSTOM) {
+                        draft = customUrl
+                        showCustomDialog = true
+                    }
+                    onProviderSelect(choice)
+                },
+                shape = shape,
+            )
         }
         Spacer(Modifier.height(16.dp))
-        Surface(
-            color = colors.surfaceContainer,
-            shape = RoundedCornerShape(18.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(Modifier.padding(8.dp)) {
-                SettingsSwitchRow(
-                    title = stringResource(R.string.dns_bypass_trusted),
-                    summary = stringResource(R.string.dns_bypass_trusted_detail),
-                    checked = bypassTrusted,
-                    onCheckedChange = onBypassTrustedChange,
-                )
-            }
-        }
+        SettingsSwitchRow(
+            title = stringResource(R.string.dns_bypass_trusted),
+            summary = stringResource(R.string.dns_bypass_trusted_detail),
+            checked = bypassTrusted,
+            onCheckedChange = onBypassTrustedChange,
+        )
         Spacer(Modifier.height(16.dp))
         Surface(
-            color = colors.surfaceContainer,
-            shape = RoundedCornerShape(18.dp),
+            color = colors.surfaceContainerLow,
+            shape = MaterialTheme.shapes.large,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {

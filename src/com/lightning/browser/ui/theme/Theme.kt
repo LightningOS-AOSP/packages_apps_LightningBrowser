@@ -42,6 +42,12 @@ fun LightningTheme(
             tertiaryContainer = colors.tertiaryContainer,
             onTertiaryContainer = colors.onTertiaryContainer,
             outline = colors.outline,
+            surfaceContainerLow = colors.surfaceContainerLow,
+            surfaceContainerHighest = colors.surfaceContainerHighest,
+            secondary = colors.secondary,
+            onSecondary = colors.onSecondary,
+            tertiary = colors.tertiary,
+            onTertiary = colors.onTertiary,
         )
     } else {
         lightColorScheme(
@@ -59,6 +65,12 @@ fun LightningTheme(
             tertiaryContainer = colors.tertiaryContainer,
             onTertiaryContainer = colors.onTertiaryContainer,
             outline = colors.outline,
+            surfaceContainerLow = colors.surfaceContainerLow,
+            surfaceContainerHighest = colors.surfaceContainerHighest,
+            secondary = colors.secondary,
+            onSecondary = colors.onSecondary,
+            tertiary = colors.tertiary,
+            onTertiary = colors.onTertiary,
         )
     }
 
