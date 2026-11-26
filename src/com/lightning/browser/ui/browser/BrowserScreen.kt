@@ -3,6 +3,7 @@ package com.lightning.browser.ui.browser
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -65,7 +66,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.lightning.browser.R
@@ -154,13 +158,13 @@ fun BrowserScreen(
 
     Column(modifier.fillMaxSize()) {
         UrlRow(
-            domain = activeTab?.domain.orEmpty(),
+            address = displayAddress(activeTab?.url.orEmpty(), activeTab?.domain.orEmpty()),
             query = query,
             editing = editing,
             onQueryChange = { query = it },
             onEditStart = {
                 editing = true
-                query = ""
+                query = activeTab?.url.orEmpty()
             },
             onCancel = { editing = false },
             onSubmit = {
@@ -199,6 +203,12 @@ fun BrowserScreen(
                     loadedUrls = loadedUrls,
                     onProgress = { progress[activeIndex] = it },
                     onNavChange = { back, forward -> navStates[activeIndex] = TabNavState(back, forward) },
+                    onUrlChange = { url ->
+                        if (url.isNotBlank() && url != "about:blank") {
+                            loadedUrls[activeIndex] = url
+                            onUpdateTab(activeIndex, activeTab.copy(url = url, domain = hostOf(url)))
+                        }
+                    },
                     onPageMeta = { title, domain, url ->
                         loadedUrls[activeIndex] = url
                         onUpdateTab(activeIndex, activeTab.copy(title = title, domain = domain, url = url))
@@ -262,6 +272,7 @@ private fun BrowserPage(
     loadedUrls: SnapshotStateMap<Int, String>,
     onProgress: (Int) -> Unit,
     onNavChange: (Boolean, Boolean) -> Unit,
+    onUrlChange: (String) -> Unit,
     onPageMeta: (String, String, String) -> Unit,
     onDownload: (String, String?, String?, String?) -> Unit,
     onBlocked: () -> Unit,
@@ -329,6 +340,16 @@ private fun BrowserPage(
                         )
                     }
 
+                    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                        super.onPageStarted(view, url, favicon)
+                        url?.let { config.onUrlChange(it) }
+                    }
+
+                    override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                        super.doUpdateVisitedHistory(view, url, isReload)
+                        url?.let { config.onUrlChange(it) }
+                    }
+
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
                         val current = config.tab
@@ -351,6 +372,7 @@ private fun BrowserPage(
                 config.bypassTrusted = bypassTrusted
                 config.onProgress = onProgress
                 config.onNavChange = onNavChange
+                config.onUrlChange = onUrlChange
                 config.onPageMeta = onPageMeta
                 config.onDownload = onDownload
                 config.onBlocked = onBlocked
@@ -440,7 +462,7 @@ private fun String.isPrivateRange(): Boolean = when {
 
 @Composable
 private fun UrlRow(
-    domain: String,
+    address: String,
     query: String,
     editing: Boolean,
     onQueryChange: (String) -> Unit,
@@ -451,6 +473,12 @@ private fun UrlRow(
 ) {
     val colors = LightningTheme.colors
     val focusRequester = remember { FocusRequester() }
+    var field by remember(editing) {
+        mutableStateOf(TextFieldValue(query, TextRange(0, query.length)))
+    }
+    LaunchedEffect(query) {
+        if (field.text != query) field = TextFieldValue(query, TextRange(query.length))
+    }
     if (editing) {
         LaunchedEffect(Unit) { focusRequester.requestFocus() }
     }
@@ -462,8 +490,11 @@ private fun UrlRow(
     ) {
         if (editing) {
             TextField(
-                value = query,
-                onValueChange = onQueryChange,
+                value = field,
+                onValueChange = {
+                    field = it
+                    onQueryChange(it.text)
+                },
                 singleLine = true,
                 placeholder = {
                     Text(
@@ -536,13 +567,14 @@ private fun UrlRow(
                     )
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        text = domain.ifEmpty { stringResource(R.string.home_search_placeholder) },
+                        text = address.ifEmpty { stringResource(R.string.home_search_placeholder) },
                         style = MaterialTheme.typography.titleMedium,
-                        color = if (domain.isNotEmpty()) colors.onSurface else colors.onSurfaceVariant,
+                        color = if (address.isNotEmpty()) colors.onSurface else colors.onSurfaceVariant,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    if (domain.isNotEmpty()) {
+                    if (address.isNotEmpty()) {
                         TonalIconButton(
                             Icons.Filled.Refresh,
                             stringResource(R.string.browser_refresh),
@@ -723,6 +755,13 @@ private fun toUrl(text: String, engine: SearchEngine): String {
 
 private fun hostOf(url: String): String =
     runCatching { Uri.parse(url).host }.getOrNull() ?: ""
+
+private fun displayAddress(url: String, domain: String): String {
+    if (url.isBlank()) return domain
+    return url.substringAfter("://")
+        .removePrefix("www.")
+        .trimEnd('/')
+}
 
 // Adblock hosts, loaded lazily from assets/adblock_hosts.txt (StevenBlack
 // ad+tracking list plus curated hosts). Matched as a suffix walk so that a
