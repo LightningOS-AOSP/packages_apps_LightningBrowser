@@ -373,9 +373,20 @@ private fun BrowserPage(
                     ): WebResourceResponse? {
                         val url = request?.url ?: return null
                         val host = url.host ?: return null
-                        if (config.adBlocking && isAdHost(host, context)) {
+                        if (config.adBlocking && (isAdHost(host, context) || YoutubeAdBlock.isAdRequest(url))) {
                             config.onBlocked()
                             return WebResourceResponse("text/html", "UTF-8", ByteArrayInputStream(ByteArray(0)))
+                        }
+                        if (config.adBlocking && request.isForMainFrame && request.method == "GET" &&
+                            YoutubeAdBlock.isYoutubeHost(host)
+                        ) {
+                            val page = YoutubeAdBlock.page(
+                                url.toString(),
+                                config.userAgent ?: view?.settings?.userAgentString,
+                                buildEffectHeaders(request),
+                                config.dnsEndpoint,
+                            )
+                            if (page != null) return page
                         }
                         val endpoint = config.dnsEndpoint ?: return null
                         if (url.scheme != "https") return null
