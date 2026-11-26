@@ -269,10 +269,11 @@ private fun BrowserPage(
     modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
-    var viewUserAgent by remember { mutableStateOf<String?>(null) }
     AndroidView(
         factory = { context ->
             webViews[index] ?: WebView(context).apply {
+                val config = WebConfig(tab, adBlocking, dnsEndpoint, bypassTrusted)
+                tag = config
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 if (tab.private) {
@@ -280,13 +281,13 @@ private fun BrowserPage(
                     settings.setSupportZoom(false)
                 }
                 setBackgroundColor(colors.surface.toArgb())
-                viewUserAgent = settings.userAgentString
+                config.userAgent = settings.userAgentString
                 setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-                    onDownload(url, userAgent, contentDisposition, mimeType)
+                    config.onDownload(url, userAgent, contentDisposition, mimeType)
                 }
                 webChromeClient = object : WebChromeClient() {
                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                        onProgress(newProgress)
+                        config.onProgress(newProgress)
                     }
                 }
                 webViewClient = object : WebViewClient() {
@@ -296,11 +297,11 @@ private fun BrowserPage(
                     ): WebResourceResponse? {
                         val url = request?.url ?: return null
                         val host = url.host ?: return null
-                        if (adBlocking && isAdHost(host, context)) {
-                            onBlocked()
+                        if (config.adBlocking && isAdHost(host, context)) {
+                            config.onBlocked()
                             return WebResourceResponse("text/html", "UTF-8", ByteArrayInputStream(ByteArray(0)))
                         }
-                        if (dnsEndpoint == null) return null
+                        val endpoint = config.dnsEndpoint ?: return null
                         if (url.scheme != "https") return null
                         val method = request.method
                         if (method != "GET" && method != "HEAD") return null
@@ -308,13 +309,13 @@ private fun BrowserPage(
                         val accept = request.requestHeaders["Accept"]
                         if (accept != null && accept.contains("text/event-stream", ignoreCase = true)) return null
                         if (host.isIpAddress()) return null
-                        if (bypassTrusted && (host.isLocalHost() || host.isPrivateRange())) return null
-                        val ua = viewUserAgent ?: return null
+                        if (config.bypassTrusted && (host.isLocalHost() || host.isPrivateRange())) return null
+                        val ua = config.userAgent ?: return null
                         val responseHeaders = buildEffectHeaders(request)
                         Log.d("LightningDoH", "intercept $method ${url} -> $host")
-                        val response = PinnedHttp.get(url.toString(), dnsEndpoint, ua, responseHeaders)
+                        val response = PinnedHttp.get(url.toString(), endpoint, ua, responseHeaders)
                             ?: return null
-                        onDnsResolved()
+                        config.onDnsResolved()
                         Log.d("LightningDoH", "served $host via pinned TLS")
                         if (response.statusCode >= 400 && response.body.isEmpty()) return null
                         val (mime, charset) = parseContentType(response.headers["content-type"])
@@ -330,18 +331,31 @@ private fun BrowserPage(
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
-                        val host = runCatching { Uri.parse(url).host }.getOrNull()?.takeIf { it.isNotEmpty() } ?: tab.domain
-                        onPageMeta(
-                            view?.title?.takeIf { it.isNotBlank() } ?: tab.title,
+                        val current = config.tab
+                        val host = runCatching { Uri.parse(url).host }.getOrNull()?.takeIf { it.isNotEmpty() } ?: current.domain
+                        config.onPageMeta(
+                            view?.title?.takeIf { it.isNotBlank() } ?: current.title,
                             host,
-                            url ?: tab.url,
+                            url ?: current.url,
                         )
-                        onNavChange(view?.canGoBack() ?: false, view?.canGoForward() ?: false)
+                        config.onNavChange(view?.canGoBack() ?: false, view?.canGoForward() ?: false)
                     }
                 }
             }.also { webViews[index] = it }
         },
         update = { wv ->
+            (wv.tag as? WebConfig)?.let { config ->
+                config.tab = tab
+                config.adBlocking = adBlocking
+                config.dnsEndpoint = dnsEndpoint
+                config.bypassTrusted = bypassTrusted
+                config.onProgress = onProgress
+                config.onNavChange = onNavChange
+                config.onPageMeta = onPageMeta
+                config.onDownload = onDownload
+                config.onBlocked = onBlocked
+                config.onDnsResolved = onDnsResolved
+            }
             wv.onResume()
             if (tab.private) {
                 CookieManager.getInstance().setAcceptCookie(false)
