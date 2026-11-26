@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.util.Log
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -332,6 +333,10 @@ private fun BrowserPage(
     AndroidView(
         factory = { context ->
             webViews[index] ?: WebView(context).apply {
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                )
                 val config = WebConfig(tab, adBlocking, dnsEndpoint, bypassTrusted)
                 tag = config
                 settings.javaScriptEnabled = true
