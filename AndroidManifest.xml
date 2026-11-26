@@ -31,5 +31,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".IncognitoActivity"
+            android:exported="false"
+            android:process=":incognito"
+            android:taskAffinity="com.lightning.browser.incognito"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode" />
     </application>
 </manifest>
