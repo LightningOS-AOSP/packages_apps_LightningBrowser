@@ -375,7 +375,7 @@ private fun BrowserPage(
                     ): WebResourceResponse? {
                         val url = request?.url ?: return null
                         val host = url.host ?: return null
-                        if (config.adBlocking && (isAdHost(host, context) || YoutubeAdBlock.isAdRequest(url))) {
+                        if (config.adBlocking && (AdBlocker.isAdHost(host, context) || YoutubeAdBlock.isAdRequest(url))) {
                             config.onBlocked()
                             return WebResourceResponse("text/html", "UTF-8", ByteArrayInputStream(ByteArray(0)))
                         }
@@ -837,43 +837,4 @@ private fun displayAddress(url: String, domain: String): String {
     return url.substringAfter("://")
         .removePrefix("www.")
         .trimEnd('/')
-}
-
-// Adblock hosts, loaded lazily from assets/adblock_hosts.txt (StevenBlack
-// ad+tracking list plus curated hosts). Matched as a suffix walk so that a
-// host like ads.foo.example.com also hits the entry for example.com.
-private object AdBlockHosts {
-    private var loaded: Set<String>? = null
-
-    fun hosts(context: Context): Set<String> {
-        loaded?.let { return it }
-        synchronized(this) {
-            loaded?.let { return it }
-            val set = HashSet<String>()
-            runCatching {
-                context.assets.open("adblock_hosts.txt").bufferedReader().useLines { lines ->
-                    lines.forEach { line ->
-                        val host = line.trim()
-                        if (host.isNotEmpty() && !host.startsWith("#")) {
-                            set.add(host)
-                        }
-                    }
-                }
-            }
-            loaded = set
-            return set
-        }
-    }
-}
-
-private fun isAdHost(host: String, context: Context): Boolean {
-    val hosts = AdBlockHosts.hosts(context)
-    var current = host
-    while (current.isNotEmpty()) {
-        if (current in hosts) return true
-        val dot = current.indexOf('.')
-        if (dot == -1) break
-        current = current.substring(dot + 1)
-    }
-    return false
 }
