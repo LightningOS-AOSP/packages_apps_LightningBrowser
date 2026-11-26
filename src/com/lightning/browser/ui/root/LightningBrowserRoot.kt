@@ -113,13 +113,15 @@ enum class LightningScreen {
 }
 
 @Composable
-fun LightningBrowserRoot() {
+fun LightningBrowserRoot(incognito: Boolean = false) {
     var screen by rememberSaveable { mutableStateOf(LightningScreen.HOME) }
     var activeIndex by rememberSaveable { mutableStateOf(0) }
     var addressFocusSignal by remember { mutableStateOf(0) }
     val context = LocalContext.current
 
-    var themeMode by remember { mutableStateOf(BrowserStore.loadThemeMode(context)) }
+    var themeMode by remember {
+        mutableStateOf(if (incognito) ThemeMode.DARK else BrowserStore.loadThemeMode(context))
+    }
     var searchEngine by remember { mutableStateOf(BrowserStore.loadSearchEngine(context)) }
     var dnsProvider by remember { mutableStateOf(BrowserStore.loadDnsProvider(context)) }
     var customDnsUrl by remember { mutableStateOf(BrowserStore.loadCustomDnsUrl(context)) }
@@ -130,7 +132,7 @@ fun LightningBrowserRoot() {
     var dnsResolvedCount by remember { mutableIntStateOf(0) }
 
     val tabs = remember {
-        mutableStateListOf(BrowserTab(title = "New tab", domain = ""))
+        mutableStateListOf(BrowserTab(title = "New tab", domain = "", private = incognito))
     }
     val navStates = remember { mutableStateMapOf<Int, TabNavState>() }
     val webViews = remember { mutableStateMapOf<Int, WebView>() }
@@ -140,13 +142,13 @@ fun LightningBrowserRoot() {
         mutableStateListOf<Bookmark>().apply { addAll(BrowserStore.loadBookmarks(context)) }
     }
     val history = remember {
-        mutableStateListOf<HistoryEntry>().apply { addAll(BrowserStore.loadHistory(context)) }
+        mutableStateListOf<HistoryEntry>().apply { if (!incognito) addAll(BrowserStore.loadHistory(context)) }
     }
     val recentSearches = remember {
-        mutableStateListOf<String>().apply { addAll(BrowserStore.loadRecentSearches(context)) }
+        mutableStateListOf<String>().apply { if (!incognito) addAll(BrowserStore.loadRecentSearches(context)) }
     }
     val pinnedSites = remember {
-        mutableStateListOf<PinnedSite>().apply { addAll(BrowserStore.loadPinnedSites(context)) }
+        mutableStateListOf<PinnedSite>().apply { if (!incognito) addAll(BrowserStore.loadPinnedSites(context)) }
     }
     var showMenu by remember { mutableStateOf(false) }
     var pendingBookmarkTab by remember { mutableStateOf<BrowserTab?>(null) }
@@ -158,32 +160,32 @@ fun LightningBrowserRoot() {
 
     LaunchedEffect(bookmarks) {
         snapshotFlow { bookmarks.toList() }.distinctUntilChanged().collect {
-            BrowserStore.saveBookmarks(context, it)
+            if (!incognito) BrowserStore.saveBookmarks(context, it)
         }
     }
     LaunchedEffect(history) {
         snapshotFlow { history.toList() }.distinctUntilChanged().collect {
-            BrowserStore.saveHistory(context, it)
+            if (!incognito) BrowserStore.saveHistory(context, it)
         }
     }
     LaunchedEffect(recentSearches) {
         snapshotFlow { recentSearches.toList() }.distinctUntilChanged().collect {
-            BrowserStore.saveRecentSearches(context, it)
+            if (!incognito) BrowserStore.saveRecentSearches(context, it)
         }
     }
     LaunchedEffect(pinnedSites) {
         snapshotFlow { pinnedSites.toList() }.distinctUntilChanged().collect {
-            BrowserStore.savePinnedSites(context, it)
+            if (!incognito) BrowserStore.savePinnedSites(context, it)
         }
     }
-    LaunchedEffect(themeMode) { BrowserStore.saveThemeMode(context, themeMode) }
-    LaunchedEffect(searchEngine) { BrowserStore.saveSearchEngine(context, searchEngine) }
-    LaunchedEffect(dnsProvider) { BrowserStore.saveDnsProvider(context, dnsProvider) }
-    LaunchedEffect(customDnsUrl) { BrowserStore.saveCustomDnsUrl(context, customDnsUrl) }
-    LaunchedEffect(bypassTrusted) { BrowserStore.saveBypassTrusted(context, bypassTrusted) }
-    LaunchedEffect(adBlocking) { BrowserStore.saveAdBlocking(context, adBlocking) }
+    LaunchedEffect(themeMode) { if (!incognito) BrowserStore.saveThemeMode(context, themeMode) }
+    LaunchedEffect(searchEngine) { if (!incognito) BrowserStore.saveSearchEngine(context, searchEngine) }
+    LaunchedEffect(dnsProvider) { if (!incognito) BrowserStore.saveDnsProvider(context, dnsProvider) }
+    LaunchedEffect(customDnsUrl) { if (!incognito) BrowserStore.saveCustomDnsUrl(context, customDnsUrl) }
+    LaunchedEffect(bypassTrusted) { if (!incognito) BrowserStore.saveBypassTrusted(context, bypassTrusted) }
+    LaunchedEffect(adBlocking) { if (!incognito) BrowserStore.saveAdBlocking(context, adBlocking) }
     LaunchedEffect(fingerprintLock) {
-        BrowserStore.saveFingerprintLock(context, fingerprintLock)
+        if (!incognito) BrowserStore.saveFingerprintLock(context, fingerprintLock)
         if (fingerprintLock) locked = true
     }
 
@@ -197,7 +199,7 @@ fun LightningBrowserRoot() {
     }
 
     fun recordVisit(title: String, domain: String) {
-        if (domain.isBlank()) return
+        if (incognito || domain.isBlank()) return
         val now = System.currentTimeMillis()
         history.firstOrNull()?.let { first ->
             if (first.domain == domain && now - first.timestamp < 5 * 60_000L) {
@@ -210,7 +212,7 @@ fun LightningBrowserRoot() {
 
     fun recordSearch(term: String) {
         val trimmed = term.trim()
-        if (trimmed.isBlank()) return
+        if (incognito || trimmed.isBlank()) return
         recentSearches.find { it.equals(trimmed, ignoreCase = true) }?.let {
             recentSearches.remove(it)
         }
@@ -273,7 +275,7 @@ fun LightningBrowserRoot() {
     fun openSite(domain: String) {
         val url = if (domain.startsWith("http")) domain else "https://$domain"
         if (tabs.isEmpty()) {
-            tabs.add(BrowserTab(title = domain, domain = hostOf(url), url = url))
+            tabs.add(BrowserTab(title = domain, domain = hostOf(url), url = url, private = incognito))
             activeIndex = 0
         } else {
             val index = activeIndex.coerceIn(tabs.indices)
@@ -373,7 +375,7 @@ fun LightningBrowserRoot() {
                         onCloseTab = { tabs.removeAt(it) },
                         onCloseAll = { tabs.clear() },
                         onNewTab = {
-                            tabs.add(BrowserTab(title = "New tab", domain = ""))
+                            tabs.add(BrowserTab(title = "New tab", domain = "", private = incognito))
                             activeIndex = tabs.size - 1
                         },
                         onOpenTab = {
@@ -488,7 +490,7 @@ fun LightningBrowserRoot() {
                         backEnabled = navStates[activeIndex]?.canGoBack == true,
                         forwardEnabled = navStates[activeIndex]?.canGoForward == true,
                         onNewTab = {
-                            tabs.add(BrowserTab(title = "New tab", domain = ""))
+                            tabs.add(BrowserTab(title = "New tab", domain = "", private = incognito))
                             activeIndex = tabs.size - 1
                             screen = LightningScreen.TABS
                         },
