@@ -28,6 +28,7 @@ class WebConfig(
     var fullscreen: FullscreenVideo? = null
     var onProgress: (Int) -> Unit = {}
     var onNavChange: (Boolean, Boolean) -> Unit = { _, _ -> }
+    var onScrolled: (Int, Int) -> Unit = { _, _ -> }
     var onUrlChange: (String) -> Unit = {}
     var onPageMeta: (String, String, String) -> Unit = { _, _, _ -> }
     var onDownload: (String, String?, String?, String?) -> Unit = { _, _, _, _ -> }

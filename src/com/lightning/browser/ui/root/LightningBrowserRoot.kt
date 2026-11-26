@@ -15,6 +15,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -133,6 +134,7 @@ fun LightningBrowserRoot() {
     val navStates = remember { mutableStateMapOf<Int, TabNavState>() }
     val webViews = remember { mutableStateMapOf<Int, WebView>() }
     val loadedUrls = remember { mutableStateMapOf<Int, String>() }
+    var chromeVisible by remember { mutableStateOf(true) }
     val bookmarks = remember {
         mutableStateListOf<Bookmark>().apply { addAll(BrowserStore.loadBookmarks(context)) }
     }
@@ -317,15 +319,21 @@ fun LightningBrowserRoot() {
                 .fillMaxSize()
                 .background(LightningTheme.colors.surface),
         ) {
+            LaunchedEffect(screen, activeIndex) { chromeVisible = true }
             val showBar = screen == LightningScreen.HOME ||
                 screen == LightningScreen.TABS ||
-                screen == LightningScreen.BROWSER
+                (screen == LightningScreen.BROWSER && chromeVisible)
+            val barPadding by animateDpAsState(
+                targetValue = if (showBar) BAR_BOTTOM_PADDING else 0.dp,
+                animationSpec = tween(200),
+                label = "barPadding",
+            )
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .statusBarsPadding()
                     .navigationBarsPadding()
-                    .padding(bottom = if (showBar) BAR_BOTTOM_PADDING else 0.dp),
+                    .padding(bottom = barPadding),
             ) {
                 Crossfade(targetState = screen, animationSpec = tween(200), modifier = Modifier.fillMaxSize()) { s ->
                     when (s) {
@@ -374,6 +382,8 @@ fun LightningBrowserRoot() {
                         onBlocked = { blockedCount++ },
                         onDnsResolved = { dnsResolvedCount++ },
                         focusSignal = addressFocusSignal,
+                        chromeVisible = chromeVisible,
+                        onChromeVisibleChange = { chromeVisible = it },
                         recentSearches = recentSearches,
                         recentPages = recentPages,
                         bookmarks = bookmarks,

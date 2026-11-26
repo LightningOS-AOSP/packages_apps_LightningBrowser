@@ -17,6 +17,12 @@ import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -90,6 +96,9 @@ import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.tone
 import java.io.ByteArrayInputStream
 
+private const val CHROME_SCROLL_THRESHOLD = 48
+private const val CHROME_SETTLE_MS = 400L
+
 data class TabNavState(val canGoBack: Boolean = false, val canGoForward: Boolean = false)
 
 @Composable
@@ -107,6 +116,8 @@ fun BrowserScreen(
     onBlocked: () -> Unit = {},
     onDnsResolved: () -> Unit = {},
     focusSignal: Int = 0,
+    chromeVisible: Boolean = true,
+    onChromeVisibleChange: (Boolean) -> Unit = {},
     recentSearches: List<String> = emptyList(),
     recentPages: List<RecentPage> = emptyList(),
     bookmarks: List<Bookmark> = emptyList(),
@@ -121,6 +132,8 @@ fun BrowserScreen(
     var editing by rememberSaveable(activeIndex) { mutableStateOf(false) }
     var query by rememberSaveable(activeIndex) { mutableStateOf("") }
     val progress = remember { mutableStateMapOf<Int, Int>() }
+    val scrollAccumulator = remember { intArrayOf(0) }
+    val lastToggle = remember { longArrayOf(0L) }
     val context = androidx.compose.ui.platform.LocalContext.current
     var pendingDownload by remember { mutableStateOf<PendingDownload?>(null) }
     val dnsEndpoint = remember(dnsProvider, customDnsUrl) {
@@ -161,6 +174,11 @@ fun BrowserScreen(
     BackHandler(enabled = fullscreen?.showing == true) { fullscreen?.hide() }
 
     Column(modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = chromeVisible || editing,
+            enter = expandVertically(tween(200)) + fadeIn(tween(200)),
+            exit = shrinkVertically(tween(200)) + fadeOut(tween(150)),
+        ) {
         UrlRow(
             address = displayAddress(activeTab?.url.orEmpty(), activeTab?.domain.orEmpty()),
             query = query,
@@ -183,6 +201,7 @@ fun BrowserScreen(
             },
             onRefresh = { webViews[activeIndex]?.reload() },
         )
+        }
         val activeProgress = progress[activeIndex] ?: 100
         if (activeProgress < 100) {
             LinearProgressIndicator(
@@ -207,6 +226,30 @@ fun BrowserScreen(
                     loadedUrls = loadedUrls,
                     onProgress = { progress[activeIndex] = it },
                     onNavChange = { back, forward -> navStates[activeIndex] = TabNavState(back, forward) },
+                    onScrolled = { scrollY, delta ->
+                        val now = System.currentTimeMillis()
+                        if (now - lastToggle[0] > CHROME_SETTLE_MS && delta != 0) {
+                            if (scrollY <= 0) {
+                                scrollAccumulator[0] = 0
+                                if (!chromeVisible) {
+                                    lastToggle[0] = now
+                                    onChromeVisibleChange(true)
+                                }
+                            } else {
+                                if ((delta > 0) != (scrollAccumulator[0] > 0)) scrollAccumulator[0] = 0
+                                scrollAccumulator[0] += delta
+                                if (scrollAccumulator[0] > CHROME_SCROLL_THRESHOLD && chromeVisible) {
+                                    scrollAccumulator[0] = 0
+                                    lastToggle[0] = now
+                                    onChromeVisibleChange(false)
+                                } else if (scrollAccumulator[0] < -CHROME_SCROLL_THRESHOLD && !chromeVisible) {
+                                    scrollAccumulator[0] = 0
+                                    lastToggle[0] = now
+                                    onChromeVisibleChange(true)
+                                }
+                            }
+                        }
+                    },
                     onUrlChange = { url ->
                         if (url.isNotBlank() && url != "about:blank") {
                             loadedUrls[activeIndex] = url
@@ -277,6 +320,7 @@ private fun BrowserPage(
     onProgress: (Int) -> Unit,
     onNavChange: (Boolean, Boolean) -> Unit,
     onUrlChange: (String) -> Unit,
+    onScrolled: (Int, Int) -> Unit,
     onPageMeta: (String, String, String) -> Unit,
     onDownload: (String, String?, String?, String?) -> Unit,
     onBlocked: () -> Unit,
@@ -299,6 +343,9 @@ private fun BrowserPage(
                 config.userAgent = settings.userAgentString
                 val fullscreen = FullscreenVideo(context)
                 config.fullscreen = fullscreen
+                setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
+                    config.onScrolled(scrollY, scrollY - oldScrollY)
+                }
                 setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
                     config.onDownload(url, userAgent, contentDisposition, mimeType)
                 }
@@ -390,6 +437,7 @@ private fun BrowserPage(
                 config.bypassTrusted = bypassTrusted
                 config.onProgress = onProgress
                 config.onNavChange = onNavChange
+                config.onScrolled = onScrolled
                 config.onUrlChange = onUrlChange
                 config.onPageMeta = onPageMeta
                 config.onDownload = onDownload
