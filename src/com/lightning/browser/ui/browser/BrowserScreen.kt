@@ -12,6 +12,7 @@ import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -337,7 +338,8 @@ private fun BrowserPage(
                 settings.domStorageEnabled = true
                 if (tab.private) {
                     settings.setSaveFormData(false)
-                    settings.setSupportZoom(false)
+                    settings.cacheMode = WebSettings.LOAD_NO_CACHE
+                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
                 }
                 setBackgroundColor(colors.surface.toArgb())
                 config.userAgent = settings.userAgentString
@@ -456,9 +458,6 @@ private fun BrowserPage(
                 config.onDnsResolved = onDnsResolved
             }
             wv.onResume()
-            if (tab.private) {
-                CookieManager.getInstance().setAcceptCookie(false)
-            }
             onNavChange(wv.canGoBack(), wv.canGoForward())
         },
         modifier = modifier,
