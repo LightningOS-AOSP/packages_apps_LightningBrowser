@@ -25,6 +25,7 @@ class WebConfig(
     var bypassTrusted: Boolean,
 ) {
     var userAgent: String? = null
+    var fullscreen: FullscreenVideo? = null
     var onProgress: (Int) -> Unit = {}
     var onNavChange: (Boolean, Boolean) -> Unit = { _, _ -> }
     var onUrlChange: (String) -> Unit = {}

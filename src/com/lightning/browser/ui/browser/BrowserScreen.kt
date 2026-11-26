@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.util.Log
+import android.view.View
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -156,6 +157,9 @@ fun BrowserScreen(
 
     BackHandler(enabled = editing) { editing = false }
 
+    val fullscreen = (webViews[activeIndex]?.tag as? WebConfig)?.fullscreen
+    BackHandler(enabled = fullscreen?.showing == true) { fullscreen?.hide() }
+
     Column(modifier.fillMaxSize()) {
         UrlRow(
             address = displayAddress(activeTab?.url.orEmpty(), activeTab?.domain.orEmpty()),
@@ -293,12 +297,26 @@ private fun BrowserPage(
                 }
                 setBackgroundColor(colors.surface.toArgb())
                 config.userAgent = settings.userAgentString
+                val fullscreen = FullscreenVideo(context)
+                config.fullscreen = fullscreen
                 setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
                     config.onDownload(url, userAgent, contentDisposition, mimeType)
                 }
                 webChromeClient = object : WebChromeClient() {
                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
                         config.onProgress(newProgress)
+                    }
+
+                    override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+                        if (view == null || callback == null) {
+                            callback?.onCustomViewHidden()
+                            return
+                        }
+                        fullscreen.show(view, callback)
+                    }
+
+                    override fun onHideCustomView() {
+                        fullscreen.hide()
                     }
                 }
                 webViewClient = object : WebViewClient() {
