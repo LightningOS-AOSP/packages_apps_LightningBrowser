@@ -374,8 +374,21 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                     )
                     LightningScreen.TABS -> TabSwitcherScreen(
                         tabs = tabs,
-                        onCloseTab = { tabs.removeAt(it) },
-                        onCloseAll = { tabs.clear() },
+                        onCloseTab = { index ->
+                            if (index in tabs.indices) {
+                                tabs.removeAt(index)
+                                activeIndex = when {
+                                    tabs.isEmpty() -> 0
+                                    activeIndex >= tabs.size -> tabs.size - 1
+                                    index < activeIndex -> activeIndex - 1
+                                    else -> activeIndex
+                                }
+                            }
+                        },
+                        onCloseAll = {
+                            tabs.clear()
+                            activeIndex = 0
+                        },
                         onNewTab = {
                             tabs.add(BrowserTab(title = "New tab", domain = "", private = incognito))
                             activeIndex = tabs.size - 1
@@ -404,7 +417,7 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                         recentSearches = recentSearches,
                         recentPages = recentPages,
                         bookmarks = bookmarks,
-                        onUpdateTab = { index, tab -> tabs[index] = tab },
+                        onUpdateTab = { index, tab -> if (index in tabs.indices) tabs[index] = tab },
                         onRecordVisit = { title, domain -> recordVisit(title, domain) },
                         onSearchSubmitted = { recordSearch(it) },
                         onBackHome = { screen = LightningScreen.HOME },
