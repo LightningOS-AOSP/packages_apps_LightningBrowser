@@ -168,6 +168,15 @@ object DohResolver {
 /** Minimal HTTPS client that talks to a pinned IP with the real SNI host. */
 object PinnedHttp {
 
+    private const val MAX_ADDRESSES = 4
+    private val DROPPED_HEADERS = setOf(
+        "transfer-encoding",
+        "content-length",
+        "content-encoding",
+        "connection",
+        "set-cookie",
+    )
+
     class Response(
         val statusCode: Int,
         val headers: Map<String, String>,
@@ -179,18 +188,14 @@ object PinnedHttp {
         dnsEndpoint: String,
         userAgent: String,
         headers: Map<String, String>,
-        maxRedirects: Int = 5,
     ): Response? {
-        var current = url
-        repeat(maxRedirects) {
-            val parsed = runCatching { URL(current) }.getOrNull() ?: return null
-            val host = parsed.host ?: return null
-            val ip = DohResolver.addressesFor(host, dnsEndpoint).firstOrNull() ?: return null
-            Log.d("LightningDoH", "fetch $current -> $host@$ip")
-            val response = fetchOnce(current, ip, userAgent, headers) ?: return null
-            if (response.statusCode !in 300..399) return response
-            val location = response.headers["location"] ?: return null
-            current = runCatching { URL(parsed, location).toString() }.getOrDefault(location)
+        val parsed = runCatching { URL(url) }.getOrNull() ?: return null
+        val host = parsed.host ?: return null
+        val addresses = DohResolver.addressesFor(host, dnsEndpoint).take(MAX_ADDRESSES)
+        for (ip in addresses) {
+            Log.d("LightningDoH", "fetch $url -> $host@$ip")
+            val response = fetchOnce(url, ip, userAgent, headers) ?: continue
+            return if (response.statusCode in 300..399) null else response
         }
         return null
     }
@@ -248,13 +253,12 @@ object PinnedHttp {
             val statusLine = readLine(input) ?: return null
             val parts = statusLine.split(" ")
             val code = parts.getOrNull(1)?.toIntOrNull() ?: return null
-            val responseHeaders = readHeaders(input)
-            responseHeaders["set-cookie"]
-                ?.substringBefore(';')
-                ?.takeIf { it.isNotEmpty() }
-                ?.let { cookie -> CookieManager.getInstance().setCookie(url, cookie) }
+            val cookies = mutableListOf<String>()
+            val responseHeaders = readHeaders(input, cookies)
+            val cookieManager = CookieManager.getInstance()
+            cookies.forEach { cookie -> cookieManager.setCookie(url, cookie) }
             val body = readBody(input, responseHeaders, 64 * 1024 * 1024)
-            Response(code, responseHeaders, body)
+            Response(code, responseHeaders.filterKeys { it !in DROPPED_HEADERS }, body)
         } catch (_: Exception) {
             null
         } finally {
@@ -274,7 +278,7 @@ object PinnedHttp {
         }
     }
 
-    private fun readHeaders(input: InputStream): Map<String, String> {
+    private fun readHeaders(input: InputStream, cookies: MutableList<String>): Map<String, String> {
         val headers = LinkedHashMap<String, String>()
         while (true) {
             val line = readLine(input) ?: break
@@ -283,6 +287,7 @@ object PinnedHttp {
             if (colon > 0) {
                 val key = line.substring(0, colon).trim().lowercase()
                 val value = line.substring(colon + 1).trim()
+                if (key == "set-cookie") cookies.add(value)
                 if (!headers.containsKey(key)) headers[key] = value
             }
         }
