@@ -424,6 +424,7 @@ private fun BrowserPage(
                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                         super.onPageStarted(view, url, favicon)
                         url?.let { config.onUrlChange(it) }
+                        if (config.adBlocking) view?.evaluateJavascript(CosmeticFilter.SCRIPT, null)
                     }
 
                     override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
@@ -433,6 +434,7 @@ private fun BrowserPage(
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
+                        if (config.adBlocking) view?.evaluateJavascript(CosmeticFilter.SCRIPT, null)
                         val current = config.tab
                         val host = runCatching { Uri.parse(url).host }.getOrNull()?.takeIf { it.isNotEmpty() } ?: current.domain
                         config.onPageMeta(
