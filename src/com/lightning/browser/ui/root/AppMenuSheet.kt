@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -42,6 +43,8 @@ fun AppMenuSheet(
     onCopyUrl: () -> Unit = {},
     onReload: () -> Unit = {},
     onShare: () -> Unit = {},
+    onIncognito: () -> Unit = {},
+    incognito: Boolean = false,
     copyUrlVisible: Boolean = false,
 ) {
     if (visible) {
@@ -69,6 +72,14 @@ fun AppMenuSheet(
                     add(
                         MenuAction(Icons.Filled.Share, stringResource(R.string.menu_share)) {
                             onShare()
+                            onHide()
+                        },
+                    )
+                }
+                if (!incognito) {
+                    add(
+                        MenuAction(Icons.Filled.VisibilityOff, stringResource(R.string.menu_incognito)) {
+                            onIncognito()
                             onHide()
                         },
                     )

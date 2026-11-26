@@ -74,6 +74,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.lightning.browser.IncognitoActivity
 import com.lightning.browser.R
 import com.lightning.browser.ui.BrowserStore
 import com.lightning.browser.ui.bar.LightningBottomBar
@@ -514,6 +515,8 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                 onCopyUrl = { copyUrl() },
                 onReload = { webViews[activeIndex]?.reload() },
                 onShare = { shareUrl() },
+                onIncognito = { context.startActivity(Intent(context, IncognitoActivity::class.java)) },
+                incognito = incognito,
                 copyUrlVisible = screen == LightningScreen.BROWSER &&
                     tabs.getOrNull(activeIndex)?.url?.isNotEmpty() == true,
                 onOpen = {
