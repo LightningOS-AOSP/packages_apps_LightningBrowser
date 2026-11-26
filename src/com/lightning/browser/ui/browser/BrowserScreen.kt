@@ -421,6 +421,23 @@ private fun BrowserPage(
                         )
                     }
 
+                    override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                        val target = request?.url ?: return false
+                        if (!config.adBlocking || !request.isForMainFrame) return false
+                        if (request.hasGesture() && !request.isRedirect) return false
+                        val host = target.host.orEmpty()
+                        if (AdBlocker.isAdHost(host, context)) {
+                            config.onBlocked()
+                            return true
+                        }
+                        val scheme = target.scheme.orEmpty()
+                        if (scheme != "http" && scheme != "https" && scheme != "about") {
+                            config.onBlocked()
+                            return true
+                        }
+                        return false
+                    }
+
                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                         super.onPageStarted(view, url, favicon)
                         url?.let { config.onUrlChange(it) }
