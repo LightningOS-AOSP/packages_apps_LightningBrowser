@@ -10,12 +10,17 @@ import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
+import android.webkit.JsPromptResult
+import android.webkit.JsResult
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.annotation.Keep
+import org.json.JSONObject
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -310,6 +315,226 @@ private fun LightningLoadingIndicator(modifier: Modifier = Modifier) {
     }
 }
 
+@Keep
+class BlobDownloadBridge(private val context: Context) {
+    @JavascriptInterface
+    fun receiveBlobChunk(
+        downloadId: String,
+        fileName: String,
+        mimeType: String,
+        base64Chunk: String,
+        isLast: Boolean,
+    ) {
+        BrowserDownloads.saveBlobChunk(context, downloadId, fileName, mimeType, base64Chunk, isLast)
+    }
+
+    @JavascriptInterface
+    fun receiveBlobData(base64Data: String, fileName: String, mimeType: String) {
+        BrowserDownloads.saveDataOrBlob(context, base64Data, fileName, mimeType)
+    }
+}
+
+private const val DOWNLOAD_INTERCEPT_SCRIPT = """
+(function() {
+    if (window._lightningDownloadHooked) return;
+    window._lightningDownloadHooked = true;
+
+    if (window.showSaveFilePicker) {
+        try {
+            delete window.showSaveFilePicker;
+        } catch(e) {
+            window.showSaveFilePicker = undefined;
+        }
+    }
+
+    var recentDownloads = {};
+
+    function isDuplicate(url) {
+        var now = Date.now();
+        if (recentDownloads[url] && (now - recentDownloads[url] < 2000)) {
+            return true;
+        }
+        recentDownloads[url] = now;
+        return false;
+    }
+
+    function sendBlobChunks(blob, name, mime) {
+        if (!blob) return;
+        var chunkSize = 512 * 1024;
+        var totalSize = blob.size || 0;
+        var downloadId = 'dl_' + Date.now() + '_' + Math.random().toString(36).substring(2);
+        var finalMime = mime || blob.type || '';
+
+        if (totalSize === 0) {
+            if (window.LightningBlobBridge && window.LightningBlobBridge.receiveBlobChunk) {
+                window.LightningBlobBridge.receiveBlobChunk(downloadId, name || '', finalMime, '', true);
+            }
+            return;
+        }
+
+        var offset = 0;
+        function readNext() {
+            if (offset >= totalSize) return;
+            var slice = blob.slice(offset, Math.min(offset + chunkSize, totalSize));
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                var dataUrl = e.target.result || '';
+                var commaIdx = dataUrl.indexOf(',');
+                var base64 = commaIdx >= 0 ? dataUrl.substring(commaIdx + 1) : dataUrl;
+                offset += slice.size;
+                var isLast = (offset >= totalSize);
+                if (window.LightningBlobBridge && window.LightningBlobBridge.receiveBlobChunk) {
+                    window.LightningBlobBridge.receiveBlobChunk(downloadId, name || '', finalMime, base64, isLast);
+                }
+                if (!isLast) {
+                    readNext();
+                }
+            };
+            reader.onerror = function(err) {
+                console.error('Failed reading blob slice:', err);
+            };
+            reader.readAsDataURL(slice);
+        }
+        readNext();
+    }
+
+    function isEmbeddedElement(url) {
+        if (!url) return false;
+        try {
+            var tags = ['iframe', 'frame', 'embed', 'object', 'video', 'audio', 'img', 'source'];
+            for (var t = 0; t < tags.length; t++) {
+                var els = document.getElementsByTagName(tags[t]);
+                for (var i = 0; i < els.length; i++) {
+                    var el = els[i];
+                    var src = el.src || el.getAttribute('src') || el.data || el.currentSrc;
+                    if (src === url) return true;
+                }
+            }
+        } catch(e) {}
+        return false;
+    }
+
+    function processBlobOrData(url, name, fallbackMime, fromDownloadListener) {
+        if (!url) return;
+        if (fromDownloadListener && isEmbeddedElement(url)) {
+            return;
+        }
+        if (isDuplicate(url)) return;
+
+        var effectiveName = name || window._lastDownloadFileName || '';
+        var effectiveMime = fallbackMime || (window._blobTypes && window._blobTypes[url]) || '';
+
+        if (url.startsWith('data:')) {
+            try {
+                fetch(url).then(function(res) {
+                    return res.blob();
+                }).then(function(blob) {
+                    sendBlobChunks(blob, effectiveName, effectiveMime || blob.type);
+                }).catch(function() {
+                    var commaIdx = url.indexOf(',');
+                    var base64 = commaIdx >= 0 ? url.substring(commaIdx + 1) : url;
+                    var header = commaIdx >= 0 ? url.substring(5, commaIdx) : '';
+                    var mime = header.split(';')[0] || effectiveMime;
+                    if (window.LightningBlobBridge && window.LightningBlobBridge.receiveBlobChunk) {
+                        var downloadId = 'dl_' + Date.now();
+                        window.LightningBlobBridge.receiveBlobChunk(downloadId, effectiveName, mime, base64, true);
+                    }
+                });
+            } catch(e) {
+                var commaIdx = url.indexOf(',');
+                var base64 = commaIdx >= 0 ? url.substring(commaIdx + 1) : url;
+                if (window.LightningBlobBridge && window.LightningBlobBridge.receiveBlobChunk) {
+                    var downloadId = 'dl_' + Date.now();
+                    window.LightningBlobBridge.receiveBlobChunk(downloadId, effectiveName, effectiveMime, base64, true);
+                }
+            }
+            return;
+        }
+
+        try {
+            fetch(url).then(function(res) {
+                return res.blob();
+            }).then(function(blob) {
+                sendBlobChunks(blob, effectiveName, effectiveMime || blob.type);
+            }).catch(function(e) {
+                fetchViaXhr(url, effectiveName, effectiveMime);
+            });
+        } catch(e) {
+            fetchViaXhr(url, effectiveName, effectiveMime);
+        }
+    }
+
+    function fetchViaXhr(url, effectiveName, effectiveMime) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.responseType = 'blob';
+        xhr.onload = function() {
+            if (this.status === 200 || this.status === 0) {
+                var blob = this.response;
+                sendBlobChunks(blob, effectiveName, effectiveMime || (blob && blob.type));
+            }
+        };
+        xhr.onerror = function() {
+            console.error('Failed to fetch blob via XHR:', url);
+        };
+        xhr.send();
+    }
+
+    window._lightningProcessBlob = processBlobOrData;
+
+    var origClick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function() {
+        var href = this.getAttribute('href') || this.href;
+        var name = this.getAttribute('download') || this.download;
+        var hasDownloadAttr = this.hasAttribute('download') || (typeof this.download === 'string' && this.download !== '');
+        if (name) {
+            window._lastDownloadFileName = name;
+        }
+        if (href && (href.startsWith('blob:') || href.startsWith('data:'))) {
+            if (hasDownloadAttr || name) {
+                processBlobOrData(href, name, '', false);
+                return;
+            }
+        }
+        return origClick.apply(this, arguments);
+    };
+
+    document.addEventListener('click', function(e) {
+        var el = e.target;
+        while (el && el.tagName !== 'A') {
+            el = el.parentElement;
+        }
+        if (el && el.tagName === 'A') {
+            var href = el.getAttribute('href') || el.href;
+            var name = el.getAttribute('download') || el.download;
+            var hasDownloadAttr = el.hasAttribute('download') || (typeof el.download === 'string' && el.download !== '');
+            if (name) {
+                window._lastDownloadFileName = name;
+            }
+            if (href && (href.startsWith('blob:') || href.startsWith('data:'))) {
+                if (hasDownloadAttr || name) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    processBlobOrData(href, name, '', false);
+                }
+            }
+        }
+    }, true);
+
+    if (window.URL && window.URL.createObjectURL) {
+        var origCreateObjectURL = window.URL.createObjectURL;
+        window.URL.createObjectURL = function(blob) {
+            var url = origCreateObjectURL.apply(this, arguments);
+            if (url && blob && blob.type) {
+                window._blobTypes = window._blobTypes || {};
+                window._blobTypes[url] = blob.type;
+            }
+            return url;
+        };
+    }
+})();
+"""
+
 @Composable
 private fun BrowserPage(
     tab: BrowserTab,
@@ -350,15 +575,49 @@ private fun BrowserPage(
                 config.userAgent = settings.userAgentString
                 val fullscreen = FullscreenVideo(context)
                 config.fullscreen = fullscreen
+                addJavascriptInterface(BlobDownloadBridge(context), "LightningBlobBridge")
                 setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
                     config.onScrolled(scrollY, scrollY - oldScrollY)
                 }
                 setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
-                    config.onDownload(url, userAgent, contentDisposition, mimeType)
+                    if (url.startsWith("blob:", ignoreCase = true)) {
+                        val fallbackName = BrowserDownloads.fileNameFrom(contentDisposition, url, mimeType)
+                        val jsonUrl = JSONObject.quote(url)
+                        val jsonFallbackName = JSONObject.quote(fallbackName)
+                        val jsonMime = JSONObject.quote(mimeType ?: "")
+                        val js = """
+                            (function() {
+                                if (window._lightningProcessBlob) {
+                                    window._lightningProcessBlob($jsonUrl, $jsonFallbackName, $jsonMime, true);
+                                }
+                            })();
+                        """.trimIndent()
+                        post { evaluateJavascript(js, null) }
+                    } else if (url.startsWith("data:", ignoreCase = true)) {
+                        val fileName = BrowserDownloads.fileNameFrom(contentDisposition, url, mimeType)
+                        BrowserDownloads.saveDataOrBlob(context, url, fileName, mimeType)
+                    } else {
+                        config.onDownload(url, userAgent, contentDisposition, mimeType)
+                    }
                 }
                 webChromeClient = object : WebChromeClient() {
                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
                         config.onProgress(newProgress)
+                    }
+
+                    override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+                        result?.confirm()
+                        return true
+                    }
+
+                    override fun onJsConfirm(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
+                        result?.confirm()
+                        return true
+                    }
+
+                    override fun onJsPrompt(view: WebView?, url: String?, message: String?, defaultValue: String?, result: JsPromptResult?): Boolean {
+                        result?.confirm(defaultValue ?: "")
+                        return true
                     }
 
                     override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
@@ -436,7 +695,7 @@ private fun BrowserPage(
                             return true
                         }
                         val scheme = target.scheme.orEmpty()
-                        if (scheme != "http" && scheme != "https" && scheme != "about") {
+                        if (scheme != "http" && scheme != "https" && scheme != "about" && scheme != "blob" && scheme != "data") {
                             config.onBlocked()
                             return true
                         }
@@ -446,6 +705,7 @@ private fun BrowserPage(
                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                         super.onPageStarted(view, url, favicon)
                         url?.let { config.onUrlChange(it) }
+                        view?.evaluateJavascript(DOWNLOAD_INTERCEPT_SCRIPT, null)
                         if (config.adBlocking) view?.evaluateJavascript(CosmeticFilter.SCRIPT, null)
                     }
 
@@ -456,6 +716,7 @@ private fun BrowserPage(
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
+                        view?.evaluateJavascript(DOWNLOAD_INTERCEPT_SCRIPT, null)
                         if (config.adBlocking) view?.evaluateJavascript(CosmeticFilter.SCRIPT, null)
                         val current = config.tab
                         val host = runCatching { Uri.parse(url).host }.getOrNull()?.takeIf { it.isNotEmpty() } ?: current.domain
@@ -467,7 +728,13 @@ private fun BrowserPage(
                         config.onNavChange(view?.canGoBack() ?: false, view?.canGoForward() ?: false)
                     }
                 }
-            }.also { webViews[index] = it }
+            }.also {
+                webViews[index] = it
+                if (tab.url.isNotEmpty() && loadedUrls[index] != tab.url) {
+                    loadedUrls[index] = tab.url
+                    it.loadUrl(tab.url)
+                }
+            }
         },
         update = { wv ->
             (wv.tag as? WebConfig)?.let { config ->
@@ -489,7 +756,7 @@ private fun BrowserPage(
         },
         modifier = modifier,
     )
-    LaunchedEffect(index, tab.url) {
+    LaunchedEffect(index, tab.url, webViews[index]) {
         val view = webViews[index] ?: return@LaunchedEffect
         val target = tab.url
         if (target.isNotEmpty() && loadedUrls[index] != target) {
