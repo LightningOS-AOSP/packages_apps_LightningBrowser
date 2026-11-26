@@ -6,6 +6,8 @@ import com.lightning.browser.ui.settings.Bookmark
 import com.lightning.browser.ui.settings.DnsProvider
 import com.lightning.browser.ui.settings.HistoryEntry
 import com.lightning.browser.ui.settings.SearchEngine
+import com.lightning.browser.ui.settings.StartupBehavior
+import com.lightning.browser.ui.tabs.BrowserTab
 import com.lightning.browser.ui.theme.ThemeMode
 import org.json.JSONArray
 import org.json.JSONObject
@@ -27,6 +29,9 @@ object BrowserStore {
     private const val KEY_DNS_BYPASS = "dns_bypass"
     private const val KEY_AD_BLOCKING = "ad_blocking"
     private const val KEY_FINGERPRINT = "fingerprint_lock"
+    private const val KEY_TABS = "open_tabs"
+    private const val KEY_ACTIVE_TAB = "active_tab_index"
+    private const val KEY_STARTUP = "startup_behavior"
     private const val MAX_HISTORY = 200
     private const val MAX_SEARCHES = 10
     private const val MAX_PINNED = 8
@@ -203,5 +208,56 @@ object BrowserStore {
 
     fun saveFingerprintLock(context: Context, value: Boolean) {
         prefs(context).edit().putBoolean(KEY_FINGERPRINT, value).apply()
+    }
+
+    fun loadTabs(context: Context): List<BrowserTab> {
+        val raw = prefs(context).getString(KEY_TABS, null) ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val entry = array.getJSONObject(i)
+                    val url = entry.optString("url", "")
+                    val domain = entry.optString("domain", "")
+                    val title = entry.optString("title", if (url.isEmpty()) "New tab" else domain)
+                    add(BrowserTab(
+                        title = title.ifEmpty { if (url.isEmpty()) "New tab" else domain },
+                        domain = domain,
+                        url = url,
+                        private = false,
+                    ))
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveTabs(context: Context, tabs: List<BrowserTab>) {
+        val nonPrivate = tabs.filter { !it.private }
+        val array = JSONArray()
+        nonPrivate.forEach { tab ->
+            array.put(JSONObject()
+                .put("title", tab.title)
+                .put("domain", tab.domain)
+                .put("url", tab.url))
+        }
+        prefs(context)
+            .edit()
+            .putString(KEY_TABS, array.toString())
+            .apply()
+    }
+
+    fun loadActiveTab(context: Context): Int =
+        prefs(context).getInt(KEY_ACTIVE_TAB, 0)
+
+    fun saveActiveTab(context: Context, index: Int) {
+        prefs(context).edit().putInt(KEY_ACTIVE_TAB, index).apply()
+    }
+
+    fun loadStartupBehavior(context: Context): StartupBehavior =
+        StartupBehavior.entries.firstOrNull { it.name == prefs(context).getString(KEY_STARTUP, null) }
+            ?: StartupBehavior.HOMEPAGE
+
+    fun saveStartupBehavior(context: Context, behavior: StartupBehavior) {
+        prefs(context).edit().putString(KEY_STARTUP, behavior.name).apply()
     }
 }

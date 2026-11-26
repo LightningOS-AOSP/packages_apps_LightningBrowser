@@ -101,6 +101,8 @@ import com.lightning.browser.ui.settings.SearchEngine
 import com.lightning.browser.ui.settings.SearchEngineScreen
 import com.lightning.browser.ui.settings.SettingsRootScreen
 import com.lightning.browser.ui.settings.SitePermissionsScreen
+import com.lightning.browser.ui.settings.StartupBehavior
+import com.lightning.browser.ui.settings.StartupScreen
 import com.lightning.browser.ui.tabs.BrowserTab
 import com.lightning.browser.ui.tabs.TabSwitcherScreen
 import com.lightning.browser.ui.theme.ExpressiveShapes
@@ -110,15 +112,45 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 
 enum class LightningScreen {
     HOME, TABS, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT, BOOKMARKS, HISTORY,
-    SITE_PERMISSIONS, BROWSER
+    SITE_PERMISSIONS, BROWSER, STARTUP
 }
 
 @Composable
 fun LightningBrowserRoot(incognito: Boolean = false) {
-    var screen by rememberSaveable { mutableStateOf(LightningScreen.HOME) }
-    var activeIndex by rememberSaveable { mutableStateOf(0) }
-    var addressFocusSignal by remember { mutableStateOf(0) }
     val context = LocalContext.current
+
+    val initialTabs = remember {
+        if (!incognito) {
+            val saved = BrowserStore.loadTabs(context)
+            if (saved.isNotEmpty()) saved else listOf(BrowserTab(title = "New tab", domain = "", private = false))
+        } else {
+            listOf(BrowserTab(title = "New tab", domain = "", private = true))
+        }
+    }
+    val tabs = remember {
+        mutableStateListOf<BrowserTab>().apply { addAll(initialTabs) }
+    }
+    val initialActiveIndex = remember {
+        if (!incognito) {
+            BrowserStore.loadActiveTab(context).coerceIn(0, (initialTabs.size - 1).coerceAtLeast(0))
+        } else {
+            0
+        }
+    }
+    var activeIndex by rememberSaveable { mutableStateOf(initialActiveIndex) }
+    var startupBehavior by remember { mutableStateOf(BrowserStore.loadStartupBehavior(context)) }
+    var screen by rememberSaveable {
+        mutableStateOf(
+            if (startupBehavior == StartupBehavior.LAST_TAB &&
+                initialTabs.getOrNull(initialActiveIndex)?.url?.isNotEmpty() == true
+            ) {
+                LightningScreen.BROWSER
+            } else {
+                LightningScreen.HOME
+            }
+        )
+    }
+    var addressFocusSignal by remember { mutableStateOf(0) }
 
     var themeMode by remember {
         mutableStateOf(if (incognito) ThemeMode.DARK else BrowserStore.loadThemeMode(context))
@@ -132,9 +164,6 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
     var blockedCount by remember { mutableIntStateOf(0) }
     var dnsResolvedCount by remember { mutableIntStateOf(0) }
 
-    val tabs = remember {
-        mutableStateListOf(BrowserTab(title = "New tab", domain = "", private = incognito))
-    }
     val navStates = remember { mutableStateMapOf<Int, TabNavState>() }
     val webViews = remember { mutableStateMapOf<Int, WebView>() }
     val loadedUrls = remember { mutableStateMapOf<Int, String>() }
@@ -159,6 +188,17 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
     var showAddPinned by remember { mutableStateOf(false) }
     var pinnedDraft by remember { mutableStateOf("") }
 
+    LaunchedEffect(tabs) {
+        snapshotFlow { tabs.toList() }.distinctUntilChanged().collect {
+            if (!incognito) BrowserStore.saveTabs(context, it)
+        }
+    }
+    LaunchedEffect(activeIndex) {
+        if (!incognito) BrowserStore.saveActiveTab(context, activeIndex)
+    }
+    LaunchedEffect(startupBehavior) {
+        if (!incognito) BrowserStore.saveStartupBehavior(context, startupBehavior)
+    }
     LaunchedEffect(bookmarks) {
         snapshotFlow { bookmarks.toList() }.distinctUntilChanged().collect {
             if (!incognito) BrowserStore.saveBookmarks(context, it)
@@ -322,7 +362,14 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                 val view = webViews[activeIndex]
                 if (view?.canGoBack() == true) view.goBack() else screen = LightningScreen.HOME
             }
-            LightningScreen.TABS, LightningScreen.SETTINGS -> screen = LightningScreen.HOME
+            LightningScreen.TABS -> {
+                screen = if (tabs.getOrNull(activeIndex)?.url?.isNotEmpty() == true) {
+                    LightningScreen.BROWSER
+                } else {
+                    LightningScreen.HOME
+                }
+            }
+            LightningScreen.SETTINGS -> screen = LightningScreen.HOME
             LightningScreen.BOOKMARKS, LightningScreen.HISTORY -> screen = LightningScreen.HOME
             LightningScreen.SITE_PERMISSIONS -> screen = LightningScreen.PRIVACY
             else -> screen = LightningScreen.SETTINGS
@@ -377,6 +424,14 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                         onCloseTab = { index ->
                             if (index in tabs.indices) {
                                 tabs.removeAt(index)
+                                webViews.remove(index)?.destroy()
+                                navStates.remove(index)
+                                loadedUrls.remove(index)
+                                for (i in index until tabs.size) {
+                                    webViews.remove(i + 1)?.let { webViews[i] = it }
+                                    navStates.remove(i + 1)?.let { navStates[i] = it }
+                                    loadedUrls.remove(i + 1)?.let { loadedUrls[i] = it }
+                                }
                                 activeIndex = when {
                                     tabs.isEmpty() -> 0
                                     activeIndex >= tabs.size -> tabs.size - 1
@@ -387,6 +442,10 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                         },
                         onCloseAll = {
                             tabs.clear()
+                            webViews.values.forEach { runCatching { it.destroy() } }
+                            webViews.clear()
+                            navStates.clear()
+                            loadedUrls.clear()
                             activeIndex = 0
                         },
                         onNewTab = {
@@ -423,14 +482,21 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                         onBackHome = { screen = LightningScreen.HOME },
                     )
                     LightningScreen.SETTINGS -> SettingsRootScreen(
+                        startupBehavior = startupBehavior,
                         themeMode = themeMode,
                         searchEngine = searchEngine,
+                        onOpenStartup = { screen = LightningScreen.STARTUP },
                         onOpenAppearance = { screen = LightningScreen.APPEARANCE },
                         onOpenPrivacy = { screen = LightningScreen.PRIVACY },
                         onOpenSearchEngine = { screen = LightningScreen.SEARCH_ENGINE },
                         onOpenDownloads = { screen = LightningScreen.DOWNLOADS },
                         onOpenAbout = { screen = LightningScreen.ABOUT },
                         onBack = { screen = LightningScreen.HOME },
+                    )
+                    LightningScreen.STARTUP -> StartupScreen(
+                        startupBehavior = startupBehavior,
+                        onStartupBehaviorSelect = { startupBehavior = it },
+                        onBack = { screen = LightningScreen.SETTINGS },
                     )
                     LightningScreen.SEARCH_ENGINE -> SearchEngineScreen(
                         engine = searchEngine,

@@ -35,6 +35,13 @@
     <string name="back">Back</string>
 
     <string name="settings_title">Settings</string>
+    <string name="settings_startup">On startup</string>
+    <string name="startup_title">On startup</string>
+    <string name="startup_subtitle">Choose what to display when opening the browser</string>
+    <string name="startup_homepage">Homepage</string>
+    <string name="startup_homepage_summary">Open the homepage</string>
+    <string name="startup_last_tab">Last opened tab</string>
+    <string name="startup_last_tab_summary">Continue from your last active tab</string>
     <string name="settings_privacy_security">Privacy and security</string>
     <string name="settings_privacy_summary">Ad blocking, private DNS</string>
     <string name="settings_appearance">Appearance</string>
