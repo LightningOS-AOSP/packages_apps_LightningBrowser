@@ -13,7 +13,9 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -38,6 +40,8 @@ fun AppMenuSheet(
     onHide: () -> Unit,
     onOpen: (LightningScreen) -> Unit,
     onCopyUrl: () -> Unit = {},
+    onReload: () -> Unit = {},
+    onShare: () -> Unit = {},
     copyUrlVisible: Boolean = false,
 ) {
     if (visible) {
@@ -51,8 +55,20 @@ fun AppMenuSheet(
             val actions = buildList {
                 if (copyUrlVisible) {
                     add(
+                        MenuAction(Icons.Filled.Refresh, stringResource(R.string.menu_reload)) {
+                            onReload()
+                            onHide()
+                        },
+                    )
+                    add(
                         MenuAction(Icons.Filled.ContentCopy, stringResource(R.string.menu_copy_url)) {
                             onCopyUrl()
+                            onHide()
+                        },
+                    )
+                    add(
+                        MenuAction(Icons.Filled.Share, stringResource(R.string.menu_share)) {
+                            onShare()
                             onHide()
                         },
                     )

@@ -23,6 +23,9 @@
     <string name="bar_menu">Menu</string>
     <string name="bar_new_tab">New tab</string>
 
+    <string name="menu_reload">Reload</string>
+    <string name="menu_share">Share</string>
+    <string name="menu_share_chooser">Share link</string>
     <string name="menu_copy_url">Copy URL</string>
     <string name="menu_copy_url_copied">URL copied to clipboard</string>
 

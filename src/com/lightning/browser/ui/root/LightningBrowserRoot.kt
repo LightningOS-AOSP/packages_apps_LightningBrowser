@@ -5,6 +5,7 @@ import android.app.KeyguardManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.webkit.CookieManager
 import android.webkit.WebStorage
 import android.webkit.WebView
@@ -248,6 +249,18 @@ fun LightningBrowserRoot() {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("url", url))
         Toast.makeText(context, R.string.menu_copy_url_copied, Toast.LENGTH_SHORT).show()
+    }
+
+    fun shareUrl() {
+        val url = tabs.getOrNull(activeIndex)?.url ?: return
+        if (url.isBlank()) return
+        val send = Intent(Intent.ACTION_SEND)
+            .setType("text/plain")
+            .putExtra(Intent.EXTRA_TEXT, url)
+        context.startActivity(
+            Intent.createChooser(send, context.getString(R.string.menu_share_chooser))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 
     val bookmarkFolders = bookmarks.map { it.folder }.filter { it.isNotBlank() }.distinct()
@@ -497,6 +510,8 @@ fun LightningBrowserRoot() {
                 visible = showMenu,
                 onHide = { showMenu = false },
                 onCopyUrl = { copyUrl() },
+                onReload = { webViews[activeIndex]?.reload() },
+                onShare = { shareUrl() },
                 copyUrlVisible = screen == LightningScreen.BROWSER &&
                     tabs.getOrNull(activeIndex)?.url?.isNotEmpty() == true,
                 onOpen = {
