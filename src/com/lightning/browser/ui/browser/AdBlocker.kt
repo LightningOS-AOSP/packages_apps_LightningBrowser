@@ -17,8 +17,34 @@
 package com.lightning.browser.ui.browser
 
 import android.content.Context
+import android.net.Uri
 
 object AdBlocker {
+
+    private val AD_PATH_PATTERNS = listOf(
+        "/pagead/",
+        "/adserver/",
+        "/adserve/",
+        "/adsense/",
+        "/adview/",
+        "/adframe",
+        "/adx/",
+        "/advert/",
+        "/adverts/",
+        "/banner_ads/",
+        "/bannerads/",
+        "/ad_banner",
+        "/doubleclick/",
+        "/show_ads",
+        "/adsbygoogle",
+        "/prebid",
+        "/ads/banner",
+        "/ads/serve",
+        "/ads/display",
+        "/ad-manager/",
+    )
+
+    private val SECOND_LEVEL_LABELS = setOf("co", "com", "org", "net", "gov", "edu", "ac")
 
     @Volatile
     private var loaded: Set<String>? = null
@@ -53,5 +79,24 @@ object AdBlocker {
             current = current.substring(dot + 1)
         }
         return false
+    }
+
+    fun shouldBlock(url: Uri, pageHost: String?, isMainFrame: Boolean, context: Context): Boolean {
+        val host = url.host ?: return false
+        if (isAdHost(host, context)) return true
+        if (isMainFrame || pageHost.isNullOrEmpty()) return false
+        if (!isThirdParty(host, pageHost)) return false
+        val path = url.path?.lowercase() ?: return false
+        return AD_PATH_PATTERNS.any { path.contains(it) }
+    }
+
+    fun isThirdParty(host: String, pageHost: String): Boolean =
+        registrableDomain(host) != registrableDomain(pageHost)
+
+    private fun registrableDomain(host: String): String {
+        val labels = host.lowercase().trimEnd('.').split('.')
+        if (labels.size <= 2) return labels.joinToString(".")
+        val take = if (labels[labels.size - 2] in SECOND_LEVEL_LABELS && labels.last().length == 2) 3 else 2
+        return labels.takeLast(take).joinToString(".")
     }
 }

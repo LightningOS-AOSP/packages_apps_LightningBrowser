@@ -375,7 +375,10 @@ private fun BrowserPage(
                     ): WebResourceResponse? {
                         val url = request?.url ?: return null
                         val host = url.host ?: return null
-                        if (config.adBlocking && (AdBlocker.isAdHost(host, context) || YoutubeAdBlock.isAdRequest(url))) {
+                        if (config.adBlocking &&
+                            (AdBlocker.shouldBlock(url, hostOf(config.tab.url), request.isForMainFrame, context) ||
+                                YoutubeAdBlock.isAdRequest(url))
+                        ) {
                             config.onBlocked()
                             return WebResourceResponse("text/html", "UTF-8", ByteArrayInputStream(ByteArray(0)))
                         }
