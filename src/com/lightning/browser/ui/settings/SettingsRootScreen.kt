@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Palette
@@ -23,8 +24,10 @@ import com.lightning.browser.ui.theme.ThemeMode
 
 @Composable
 fun SettingsRootScreen(
+    startupBehavior: StartupBehavior,
     themeMode: ThemeMode,
     searchEngine: SearchEngine,
+    onOpenStartup: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenPrivacy: () -> Unit,
     onOpenSearchEngine: () -> Unit,
@@ -42,9 +45,17 @@ fun SettingsRootScreen(
     ) {
         SettingsHeader(stringResource(R.string.settings_title), onBack)
         Spacer(Modifier.height(4.dp))
-        GroupedColumn(5) { i, shape ->
+        GroupedColumn(6) { i, shape ->
             when (i) {
                 0 -> SettingsRow(
+                    icon = Icons.Filled.Home,
+                    title = stringResource(R.string.settings_startup),
+                    summary = stringResource(startupBehavior.labelRes),
+                    onClick = onOpenStartup,
+                    shape = shape,
+                    index = i,
+                )
+                1 -> SettingsRow(
                     icon = Icons.Filled.Shield,
                     title = stringResource(R.string.settings_privacy_security),
                     summary = stringResource(R.string.settings_privacy_summary),
@@ -52,7 +63,7 @@ fun SettingsRootScreen(
                     shape = shape,
                     index = i,
                 )
-                1 -> SettingsRow(
+                2 -> SettingsRow(
                     icon = Icons.Filled.Palette,
                     title = stringResource(R.string.settings_appearance),
                     summary = themeMode.label(),
@@ -60,7 +71,7 @@ fun SettingsRootScreen(
                     shape = shape,
                     index = i,
                 )
-                2 -> SettingsRow(
+                3 -> SettingsRow(
                     icon = Icons.Filled.Language,
                     title = stringResource(R.string.settings_search_engine),
                     summary = stringResource(searchEngine.labelRes),
@@ -68,7 +79,7 @@ fun SettingsRootScreen(
                     shape = shape,
                     index = i,
                 )
-                3 -> SettingsRow(
+                4 -> SettingsRow(
                     icon = Icons.Filled.Download,
                     title = stringResource(R.string.settings_downloads),
                     summary = stringResource(R.string.settings_downloads_summary),

@@ -26,5 +26,13 @@ enum class SearchEngine(
     BRAVE(R.string.search_engine_brave, R.string.search_engine_brave_detail, "https://search.brave.com/search?q=%s"),
 }
 
+enum class StartupBehavior(
+    @StringRes val labelRes: Int,
+    @StringRes val summaryRes: Int,
+) {
+    HOMEPAGE(R.string.startup_homepage, R.string.startup_homepage_summary),
+    LAST_TAB(R.string.startup_last_tab, R.string.startup_last_tab_summary),
+}
+
 fun SearchEngine.searchUrl(query: String): String =
     String.format(searchUrlFormat, URLEncoder.encode(query.trim(), "UTF-8"))
