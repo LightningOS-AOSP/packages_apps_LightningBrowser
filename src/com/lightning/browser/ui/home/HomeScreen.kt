@@ -21,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -56,6 +57,7 @@ fun HomeScreen(
     onOpenProfile: () -> Unit = {},
     onAddPinned: () -> Unit = {},
     onRemovePinned: (PinnedSite) -> Unit = {},
+    incognito: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
@@ -70,6 +72,10 @@ fun HomeScreen(
         Spacer(Modifier.height(20.dp))
         SearchBar(onOpenSearch = onOpenSearch)
         Spacer(Modifier.height(20.dp))
+        if (incognito) {
+            IncognitoNotice()
+            Spacer(Modifier.height(20.dp))
+        }
         QuickAccessRow(pinnedSites, onOpenSite, onAddPinned, onRemovePinned)
         Spacer(Modifier.height(28.dp))
         Text(
@@ -299,3 +305,39 @@ private fun LightningColors.chipColors(tone: ChipTone): Pair<Color, Color> =
         ChipTone.SECONDARY -> secondaryContainer to onSecondaryContainer
         ChipTone.TERTIARY -> tertiaryContainer to onTertiaryContainer
     }
+
+@Composable
+private fun IncognitoNotice() {
+    val colors = LightningTheme.colors
+    Surface(
+        shape = ExpressiveShapes.diagonal(0, 32, 10),
+        color = colors.secondaryContainer,
+        contentColor = colors.onSecondaryContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(16.dp),
+        ) {
+            ShapedIcon(
+                Icons.Filled.VisibilityOff,
+                ExpressiveShapes.Cookie9,
+                colors.surface.copy(alpha = 0.6f),
+                colors.onSecondaryContainer,
+                size = 44.dp,
+                iconSize = 22.dp,
+            )
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text(
+                    text = stringResource(R.string.incognito_title),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = stringResource(R.string.incognito_summary),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
+}

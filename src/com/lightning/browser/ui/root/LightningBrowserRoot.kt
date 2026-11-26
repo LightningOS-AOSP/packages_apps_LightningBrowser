@@ -366,6 +366,7 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                             pinnedDraft = ""
                             showAddPinned = true
                         },
+                        incognito = incognito,
                         onRemovePinned = { site ->
                             pinnedSites.remove(site)
                             Toast.makeText(context, R.string.home_pinned_removed, Toast.LENGTH_SHORT).show()

@@ -26,6 +26,8 @@
     <string name="menu_reload">Reload</string>
     <string name="menu_share">Share</string>
     <string name="menu_incognito">Incognito</string>
+    <string name="incognito_title">You are incognito</string>
+    <string name="incognito_summary">History, cookies and site data are erased when you close this window.</string>
     <string name="menu_share_chooser">Share link</string>
     <string name="menu_copy_url">Copy URL</string>
     <string name="menu_copy_url_copied">URL copied to clipboard</string>
