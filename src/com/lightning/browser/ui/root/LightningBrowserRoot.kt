@@ -713,11 +713,18 @@ fun LightningBrowserRoot(
                     enter = fadeIn(tween(200)) + slideInVertically(initialOffsetY = { it }),
                     exit = fadeOut(tween(150)) + slideOutVertically(targetOffsetY = { it }),
                 ) {
+                    val currentTab = tabs.getOrNull(activeIndex)
+                    val isCurrentBookmarked = screen == LightningScreen.BROWSER &&
+                        currentTab != null &&
+                        !currentTab.private &&
+                        currentTab.domain.isNotEmpty() &&
+                        bookmarks.any { it.domain == currentTab.domain }
                     LightningBottomBar(
                         onBack = { webViews[activeIndex]?.goBack() },
                         onForward = { webViews[activeIndex]?.goForward() },
                         backEnabled = navStates[activeIndex]?.canGoBack == true,
                         forwardEnabled = navStates[activeIndex]?.canGoForward == true,
+                        bookmarked = isCurrentBookmarked,
                         onNewTab = {
                             if (screen != LightningScreen.TABS) {
                                 tabsReturnScreen = screen
