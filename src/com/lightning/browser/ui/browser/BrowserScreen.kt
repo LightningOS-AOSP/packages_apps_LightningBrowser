@@ -1637,6 +1637,7 @@ private fun BrowserPage(
                         if (config.desktopMode && view != null) {
                             view.evaluateJavascript(desktopViewportScript(view), null)
                         }
+                        view?.invalidate()
                     }
 
                     override fun onReceivedHttpError(
@@ -1685,9 +1686,17 @@ private fun BrowserPage(
                 }
             }).also { wv ->
                 (wv.parent as? ViewGroup)?.removeView(wv)
+                wv.onResume()
+                wv.post {
+                    wv.requestLayout()
+                    wv.invalidate()
+                }
+                wv.postDelayed({ wv.invalidate() }, 60L)
             }
         },
         update = { wv ->
+            wv.onResume()
+            wv.post { wv.invalidate() }
             (wv.tag as? WebConfig)?.let { config ->
                 val desktopChanged = config.desktopMode != tab.desktopMode
                 config.tab = tab
