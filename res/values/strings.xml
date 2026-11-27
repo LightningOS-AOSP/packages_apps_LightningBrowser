@@ -139,6 +139,21 @@
     <string name="downloads_empty_detail">Files you download will appear here.</string>
     <string name="download_pause">Pause</string>
     <string name="download_resume">Resume</string>
+    <string name="download_cancel">Cancel</string>
+    <string name="download_retry">Retry</string>
+    <string name="download_file_missing">File missing</string>
+    <string name="download_action_open">Open</string>
+    <string name="download_action_locate">Locate in Files</string>
+    <string name="download_action_share">Share</string>
+    <string name="download_action_delete_history">Remove from list</string>
+    <string name="download_action_delete_both">Delete from list and storage</string>
+    <string name="download_started_title">Downloading file</string>
+    <string name="download_finished_title">Download complete</string>
+    <string name="download_view">View</string>
+    <string name="download_exists_title">Download file again?</string>
+    <string name="download_exists_message">A file named %1$s already exists. Save a new copy as:</string>
+    <string name="download_exists_confirm">Download</string>
+    <string name="download_exists_cancel">Cancel</string>
 
     <string name="about_title">About</string>
     <string name="about_version">Version 1.0</string>

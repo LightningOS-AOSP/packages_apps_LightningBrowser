@@ -17,6 +17,7 @@
 package com.lightning.browser.ui.browser
 
 import com.lightning.browser.ui.tabs.BrowserTab
+import java.io.File
 
 class WebConfig(
     var tab: BrowserTab,
@@ -32,6 +33,9 @@ class WebConfig(
     var onUrlChange: (String) -> Unit = {}
     var onPageMeta: (String, String, String) -> Unit = { _, _, _ -> }
     var onDownload: (String, String?, String?, String?) -> Unit = { _, _, _, _ -> }
+    var onDownloadStart: (String) -> Unit = {}
+    var onDownloadComplete: (String) -> Unit = {}
+    var onDuplicateBlob: (String, String, String, File) -> Unit = { _, _, _, _ -> }
     var onBlocked: () -> Unit = {}
     var onDnsResolved: () -> Unit = {}
 }

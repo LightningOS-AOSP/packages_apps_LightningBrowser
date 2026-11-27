@@ -30,7 +30,10 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,19 +45,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -72,9 +80,11 @@ import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -86,6 +96,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.delay
 import com.lightning.browser.R
 import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.components.MorphLoader
@@ -102,6 +114,7 @@ import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.tone
 import java.io.ByteArrayInputStream
+import java.io.File
 
 private const val CHROME_SCROLL_THRESHOLD = 48
 private const val CHROME_SETTLE_MS = 400L
@@ -132,6 +145,7 @@ fun BrowserScreen(
     onUpdateTab: (Int, BrowserTab) -> Unit,
     onRecordVisit: (String, String) -> Unit = { _, _ -> },
     onSearchSubmitted: (String) -> Unit = {},
+    onOpenDownloads: () -> Unit = {},
     onBackHome: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -144,8 +158,47 @@ fun BrowserScreen(
     val lastToggle = remember { longArrayOf(0L) }
     val context = androidx.compose.ui.platform.LocalContext.current
     var pendingDownload by remember { mutableStateOf<PendingDownload?>(null) }
+    var duplicateDownload by remember { mutableStateOf<DuplicateDownloadPrompt?>(null) }
+    var downloadPopup by remember { mutableStateOf<DownloadPopupState?>(null) }
     val dnsEndpoint = remember(dnsProvider, customDnsUrl) {
         DohResolver.endpointFor(dnsProvider, customDnsUrl)
+    }
+
+    LaunchedEffect(downloadPopup) {
+        val current = downloadPopup ?: return@LaunchedEffect
+        delay(if (current.completed) 3_500L else 6_000L)
+        if (downloadPopup?.id == current.id) {
+            downloadPopup = null
+        }
+    }
+
+    fun showDownloadStarted(name: String) {
+        downloadPopup = DownloadPopupState(fileName = name, completed = false)
+    }
+
+    fun showDownloadFinished(name: String) {
+        downloadPopup = DownloadPopupState(fileName = name, completed = true)
+    }
+
+    fun enqueueChecked(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) {
+        val fileName = BrowserDownloads.fileNameFrom(contentDisposition, url, mimeType)
+        if (BrowserDownloads.downloadExists(context, fileName)) {
+            val suggested = BrowserDownloads.nextAvailableName(context, fileName)
+            duplicateDownload = if (url.startsWith("data:", ignoreCase = true)) {
+                DuplicateDownloadPrompt.DataUri(url, fileName, suggested, mimeType)
+            } else {
+                DuplicateDownloadPrompt.Http(url, userAgent, fileName, suggested, mimeType)
+            }
+        } else {
+            val started = BrowserDownloads.enqueueWithFileName(context, url, userAgent, fileName, mimeType)
+            if (started) {
+                if (url.startsWith("data:", ignoreCase = true)) {
+                    showDownloadFinished(fileName)
+                } else {
+                    showDownloadStarted(fileName)
+                }
+            }
+        }
     }
 
     val notificationLauncher = rememberLauncherForActivityResult(
@@ -154,18 +207,22 @@ fun BrowserScreen(
         val request = pendingDownload
         pendingDownload = null
         if (granted && request != null) {
-            BrowserDownloads.enqueue(context, request.url, request.userAgent, request.contentDisposition, request.mimeType)
+            enqueueChecked(request.url, request.userAgent, request.contentDisposition, request.mimeType)
         }
     }
 
     fun startDownload(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) {
+        if (url.startsWith("data:", ignoreCase = true)) {
+            enqueueChecked(url, userAgent, contentDisposition, mimeType)
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             pendingDownload = PendingDownload(url, userAgent, contentDisposition, mimeType)
             notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            BrowserDownloads.enqueue(context, url, userAgent, contentDisposition, mimeType)
+            enqueueChecked(url, userAgent, contentDisposition, mimeType)
         }
     }
 
@@ -271,6 +328,12 @@ fun BrowserScreen(
                         if (!activeTab.private) onRecordVisit(title, domain)
                     },
                     onDownload = ::startDownload,
+                    onDownloadStart = ::showDownloadStarted,
+                    onDownloadComplete = ::showDownloadFinished,
+                    onDuplicateBlob = { existing, suggested, mime, temp ->
+                        downloadPopup = null
+                        duplicateDownload = DuplicateDownloadPrompt.BlobTemp(existing, suggested, mime, temp)
+                    },
                     onBlocked = onBlocked,
                     onDnsResolved = onDnsResolved,
                     modifier = Modifier.fillMaxSize(),
@@ -306,6 +369,252 @@ fun BrowserScreen(
             if (activeProgress < 100 && !editing) {
                 LightningLoadingIndicator(Modifier.fillMaxSize())
             }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = downloadPopup != null,
+                enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
+                exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(180)),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+            ) {
+                downloadPopup?.let { popup ->
+                    DownloadStatusPopup(
+                        state = popup,
+                        onView = {
+                            downloadPopup = null
+                            onOpenDownloads()
+                        },
+                        onDismiss = { downloadPopup = null },
+                    )
+                }
+            }
+        }
+    }
+
+    duplicateDownload?.let { prompt ->
+        DuplicateDownloadDialog(
+            prompt = prompt,
+            onDismiss = {
+                if (prompt is DuplicateDownloadPrompt.BlobTemp) runCatching { prompt.tempFile.delete() }
+                duplicateDownload = null
+            },
+            onConfirm = {
+                when (prompt) {
+                    is DuplicateDownloadPrompt.Http -> {
+                        if (BrowserDownloads.enqueueWithFileName(
+                                context,
+                                prompt.url,
+                                prompt.userAgent,
+                                prompt.suggestedName,
+                                prompt.mimeType,
+                            )
+                        ) {
+                            showDownloadStarted(prompt.suggestedName)
+                        }
+                    }
+                    is DuplicateDownloadPrompt.DataUri -> {
+                        if (BrowserDownloads.saveDataOrBlob(
+                                context,
+                                prompt.dataUri,
+                                prompt.suggestedName,
+                                prompt.mimeType,
+                            )
+                        ) {
+                            showDownloadFinished(prompt.suggestedName)
+                        }
+                    }
+                    is DuplicateDownloadPrompt.BlobTemp -> {
+                        if (BrowserDownloads.completePendingBlob(
+                                context,
+                                prompt.suggestedName,
+                                prompt.mimeType,
+                                prompt.tempFile,
+                            )
+                        ) {
+                            showDownloadFinished(prompt.suggestedName)
+                        }
+                    }
+                }
+                duplicateDownload = null
+            },
+        )
+    }
+}
+
+@Composable
+private fun DownloadStatusPopup(
+    state: DownloadPopupState,
+    onView: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = colors.surfaceContainerHigh,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            ShapedIcon(
+                icon = Icons.Filled.FileDownload,
+                shape = ExpressiveShapes.Cookie9,
+                container = if (state.completed) colors.secondaryContainer else colors.primaryContainer,
+                content = if (state.completed) colors.onSecondaryContainer else colors.onPrimaryContainer,
+                size = 44.dp,
+                iconSize = 22.dp,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(
+                        if (state.completed) R.string.download_finished_title else R.string.download_started_title,
+                    ),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = state.fileName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(Modifier.height(8.dp))
+                if (state.completed) {
+                    LinearProgressIndicator(
+                        progress = { 1f },
+                        color = colors.primary,
+                        trackColor = colors.surfaceContainerHighest,
+                        strokeCap = StrokeCap.Round,
+                        gapSize = 0.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(CircleShape),
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        color = colors.primary,
+                        trackColor = colors.surfaceContainerHighest,
+                        strokeCap = StrokeCap.Round,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(CircleShape),
+                    )
+                }
+            }
+            Spacer(Modifier.width(8.dp))
+            TextButton(
+                onClick = onView,
+                shape = CircleShape,
+            ) {
+                Text(
+                    text = stringResource(R.string.download_view),
+                    color = colors.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = null,
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DuplicateDownloadDialog(
+    prompt: DuplicateDownloadPrompt,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = colors.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+            ) {
+                ShapedIcon(
+                    icon = Icons.Filled.FileDownload,
+                    shape = ExpressiveShapes.Clover4,
+                    container = colors.secondaryContainer,
+                    content = colors.onSecondaryContainer,
+                    size = 52.dp,
+                    iconSize = 24.dp,
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.download_exists_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.download_exists_message, prompt.existingName),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(12.dp))
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = colors.surfaceContainerHighest,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = prompt.suggestedName,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.onSurface,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    )
+                }
+                Spacer(Modifier.height(24.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.End),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = CircleShape,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.download_exists_cancel),
+                            color = colors.onSurface,
+                        )
+                    }
+                    Button(
+                        onClick = onConfirm,
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.primary,
+                            contentColor = colors.onPrimary,
+                        ),
+                    ) {
+                        Text(text = stringResource(R.string.download_exists_confirm))
+                    }
+                }
+            }
         }
     }
 }
@@ -318,7 +627,12 @@ private fun LightningLoadingIndicator(modifier: Modifier = Modifier) {
 }
 
 @Keep
-class BlobDownloadBridge(private val context: Context) {
+class BlobDownloadBridge(
+    private val context: Context,
+    private val onStart: (fileName: String) -> Unit,
+    private val onComplete: (fileName: String) -> Unit,
+    private val onDuplicate: (existingName: String, suggestedName: String, mimeType: String, tempFile: File) -> Unit,
+) {
     @JavascriptInterface
     fun receiveBlobChunk(
         downloadId: String,
@@ -327,7 +641,17 @@ class BlobDownloadBridge(private val context: Context) {
         base64Chunk: String,
         isLast: Boolean,
     ) {
-        BrowserDownloads.saveBlobChunk(context, downloadId, fileName, mimeType, base64Chunk, isLast)
+        BrowserDownloads.saveBlobChunk(
+            context,
+            downloadId,
+            fileName,
+            mimeType,
+            base64Chunk,
+            isLast,
+            onStart = onStart,
+            onComplete = onComplete,
+            onDuplicate = onDuplicate,
+        )
     }
 
     @JavascriptInterface
@@ -552,6 +876,9 @@ private fun BrowserPage(
     onScrolled: (Int, Int) -> Unit,
     onPageMeta: (String, String, String) -> Unit,
     onDownload: (String, String?, String?, String?) -> Unit,
+    onDownloadStart: (String) -> Unit,
+    onDownloadComplete: (String) -> Unit,
+    onDuplicateBlob: (String, String, String, File) -> Unit,
     onBlocked: () -> Unit,
     onDnsResolved: () -> Unit,
     modifier: Modifier = Modifier,
@@ -577,7 +904,17 @@ private fun BrowserPage(
                 config.userAgent = settings.userAgentString
                 val fullscreen = FullscreenVideo(context)
                 config.fullscreen = fullscreen
-                addJavascriptInterface(BlobDownloadBridge(context), "LightningBlobBridge")
+                addJavascriptInterface(
+                    BlobDownloadBridge(
+                        context = context,
+                        onStart = { name -> config.onDownloadStart(name) },
+                        onComplete = { name -> config.onDownloadComplete(name) },
+                        onDuplicate = { existing, suggested, mime, temp ->
+                            config.onDuplicateBlob(existing, suggested, mime, temp)
+                        },
+                    ),
+                    "LightningBlobBridge",
+                )
                 setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
                     config.onScrolled(scrollY, scrollY - oldScrollY)
                 }
@@ -595,9 +932,6 @@ private fun BrowserPage(
                             })();
                         """.trimIndent()
                         post { evaluateJavascript(js, null) }
-                    } else if (url.startsWith("data:", ignoreCase = true)) {
-                        val fileName = BrowserDownloads.fileNameFrom(contentDisposition, url, mimeType)
-                        BrowserDownloads.saveDataOrBlob(context, url, fileName, mimeType)
                     } else {
                         config.onDownload(url, userAgent, contentDisposition, mimeType)
                     }
@@ -773,6 +1107,9 @@ private fun BrowserPage(
                 config.onUrlChange = onUrlChange
                 config.onPageMeta = onPageMeta
                 config.onDownload = onDownload
+                config.onDownloadStart = onDownloadStart
+                config.onDownloadComplete = onDownloadComplete
+                config.onDuplicateBlob = onDuplicateBlob
                 config.onBlocked = onBlocked
                 config.onDnsResolved = onDnsResolved
             }
@@ -1130,12 +1467,45 @@ private data class Suggestion(
     val tone: ChipTone,
 )
 
+private data class DownloadPopupState(
+    val fileName: String,
+    val completed: Boolean,
+    val id: Long = System.nanoTime(),
+)
+
 private data class PendingDownload(
     val url: String,
     val userAgent: String?,
     val contentDisposition: String?,
     val mimeType: String?,
 )
+
+private sealed class DuplicateDownloadPrompt(
+    val existingName: String,
+    val suggestedName: String,
+) {
+    class Http(
+        val url: String,
+        val userAgent: String?,
+        existingName: String,
+        suggestedName: String,
+        val mimeType: String?,
+    ) : DuplicateDownloadPrompt(existingName, suggestedName)
+
+    class DataUri(
+        val dataUri: String,
+        existingName: String,
+        suggestedName: String,
+        val mimeType: String?,
+    ) : DuplicateDownloadPrompt(existingName, suggestedName)
+
+    class BlobTemp(
+        existingName: String,
+        suggestedName: String,
+        val mimeType: String,
+        val tempFile: File,
+    ) : DuplicateDownloadPrompt(existingName, suggestedName)
+}
 
 private fun toUrl(text: String, engine: SearchEngine): String {
     val trimmed = text.trim()
