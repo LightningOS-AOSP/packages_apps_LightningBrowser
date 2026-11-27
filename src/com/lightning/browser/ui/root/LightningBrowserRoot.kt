@@ -79,6 +79,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalWindowInfo
+import kotlinx.coroutines.delay
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -93,6 +95,7 @@ import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.browser.BrowserDownloads
 import com.lightning.browser.ui.browser.BrowserScreen
+import com.lightning.browser.ui.browser.ClipboardUrlHelper
 import com.lightning.browser.ui.browser.PrintScreen
 import com.lightning.browser.ui.browser.TabNavState
 import com.lightning.browser.ui.home.HomeScreen
@@ -170,6 +173,82 @@ fun LightningBrowserRoot(
         )
     }
     var addressFocusSignal by remember { mutableStateOf(0) }
+    var editStartedFromHome by remember { mutableStateOf(false) }
+    var dismissedClipTimestamp by remember { mutableStateOf(BrowserStore.loadDismissedClipTimestamp(context)) }
+    var clipboardHintPresent by remember { mutableStateOf(false) }
+    var currentClipSig by remember { mutableStateOf(0L) }
+    var checkedClipSig by remember { mutableStateOf<Long?>(null) }
+    val windowInfo = LocalWindowInfo.current
+    val clipboardLifecycleOwner = LocalLifecycleOwner.current
+
+    fun dismissClipboard(sig: Long) {
+        dismissedClipTimestamp = sig
+        BrowserStore.saveDismissedClipTimestamp(context, sig)
+    }
+
+    fun refreshClipboardState(force: Boolean = false) {
+        val sig = ClipboardUrlHelper.clipSignature(context)
+        if (!force && sig != 0L && sig == checkedClipSig) return
+        currentClipSig = sig
+        val expired = sig > 0L && (System.currentTimeMillis() - sig) > 10 * 60 * 1000L
+        if (expired || sig == dismissedClipTimestamp) {
+            clipboardHintPresent = false
+            if (sig != 0L) checkedClipSig = sig
+            return
+        }
+        val pending = ClipboardUrlHelper.isClassificationPending(context)
+        clipboardHintPresent = ClipboardUrlHelper.hasClipboardUrlHint(context)
+        if (!pending && sig != 0L) {
+            checkedClipSig = sig
+        }
+    }
+
+    LaunchedEffect(windowInfo.isWindowFocused) {
+        if (windowInfo.isWindowFocused) {
+            refreshClipboardState()
+            if (ClipboardUrlHelper.isClassificationPending(context)) {
+                delay(200L)
+                refreshClipboardState(force = true)
+            }
+        }
+    }
+
+    DisposableEffect(clipboardLifecycleOwner, context) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        val clipListener = ClipboardManager.OnPrimaryClipChangedListener {
+            checkedClipSig = null
+            val sig = ClipboardUrlHelper.clipSignature(context)
+            if (windowInfo.isWindowFocused) {
+                // Link was copied inside Lightning Browser itself; do not prompt with a banner.
+                dismissClipboard(sig)
+                currentClipSig = sig
+                clipboardHintPresent = false
+                if (sig != 0L) checkedClipSig = sig
+            } else {
+                refreshClipboardState(force = true)
+            }
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                refreshClipboardState()
+            }
+        }
+        clipboard?.addPrimaryClipChangedListener(clipListener)
+        clipboardLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            clipboard?.removePrimaryClipChangedListener(clipListener)
+            clipboardLifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    val showClipboardBanner = clipboardHintPresent && currentClipSig != dismissedClipTimestamp
+
+    LaunchedEffect(showClipboardBanner, currentClipSig) {
+        if (showClipboardBanner) {
+            delay(12_000L)
+            dismissClipboard(currentClipSig)
+        }
+    }
     var findInPageSignal by remember { mutableStateOf(0) }
     val screenBackStack = remember { mutableStateListOf<LightningScreen>() }
 
@@ -536,6 +615,21 @@ fun LightningBrowserRoot(
         screen = LightningScreen.BROWSER
     }
 
+    fun openInNewTab(rawUrl: String) {
+        val url = if (rawUrl.startsWith("http")) rawUrl else "https://$rawUrl"
+        val host = hostOf(url)
+        val existingEmpty = tabs.indexOfFirst { it.url.isEmpty() }
+        if (existingEmpty >= 0) {
+            tabs[existingEmpty] = tabs[existingEmpty].copy(title = host, domain = host, url = url)
+            activeIndex = existingEmpty
+        } else {
+            tabs.add(BrowserTab(title = host, domain = host, url = url, private = incognito))
+            activeIndex = tabs.size - 1
+        }
+        screenBackStack.clear()
+        screen = LightningScreen.BROWSER
+    }
+
     fun openSavedPage(title: String, uri: String) {
         val existingEmpty = tabs.indexOfFirst { it.url.isEmpty() }
         if (existingEmpty >= 0) {
@@ -664,6 +758,8 @@ fun LightningBrowserRoot(
                         onDnsResolved = { dnsResolvedCount++ },
                         focusSignal = addressFocusSignal,
                         onFocusConsumed = { addressFocusSignal = 0 },
+                        editStartedFromHome = editStartedFromHome,
+                        onClearEditFromHome = { editStartedFromHome = false },
                         findSignal = findInPageSignal,
                         onFindConsumed = { findInPageSignal = 0 },
                         chromeVisible = chromeVisible,
@@ -682,6 +778,18 @@ fun LightningBrowserRoot(
                         },
                         onSearchSubmitted = { recordSearch(it) },
                         onOpenDownloads = { navigateTo(LightningScreen.DOWNLOADS) },
+                        onOpenInNewTab = { openInNewTab(it) },
+                        showClipboardBanner = showClipboardBanner,
+                        dismissedClipTimestamp = dismissedClipTimestamp,
+                        onOpenClipboardBanner = {
+                            val url = ClipboardUrlHelper.readClipboardUrl(context)
+                            dismissClipboard(currentClipSig)
+                            if (url != null) {
+                                openInNewTab(url)
+                            }
+                        },
+                        onDismissClipboardBanner = { dismissClipboard(currentClipSig) },
+                        onDismissClipSig = { dismissClipboard(it) },
                         onPrintRequest = { openPrintSheet() },
                         onBackHome = {
                             captureTabThumbnail(activeIndex)
@@ -705,10 +813,20 @@ fun LightningBrowserRoot(
                         recentPages = recentPages,
                         pinnedSites = pinnedSites,
                         onOpenSearch = {
+                            editStartedFromHome = true
                             addressFocusSignal++
                             screen = LightningScreen.BROWSER
                         },
                         onOpenSite = { openSite(it) },
+                        showClipboardBanner = showClipboardBanner,
+                        onOpenClipboardBanner = {
+                            val url = ClipboardUrlHelper.readClipboardUrl(context)
+                            dismissClipboard(currentClipSig)
+                            if (url != null) {
+                                openInNewTab(url)
+                            }
+                        },
+                        onDismissClipboardBanner = { dismissClipboard(currentClipSig) },
                         onOpenProfile = { screen = LightningScreen.SETTINGS },
                         onAddPinned = {
                             pinnedDraft = ""

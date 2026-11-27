@@ -42,6 +42,7 @@ object BrowserStore {
     private const val KEY_DOWNLOADS = "browser_downloads"
     private const val KEY_DEFAULT_BROWSER_PROMPTED = "default_browser_prompted"
     private const val KEY_HAPTIC_FEEDBACK = "haptic_feedback"
+    private const val KEY_DISMISSED_CLIP_TIMESTAMP = "dismissed_clip_timestamp"
     private const val MAX_HISTORY = 200
     private const val MAX_DOWNLOADS = 200
     private const val MAX_SEARCHES = 10
@@ -408,5 +409,14 @@ object BrowserStore {
             val updated = current.toMutableSet().apply { remove(title) }
             prefs(context).edit().putStringSet(KEY_HIDDEN_DOWNLOADS, updated).apply()
         }
+    }
+
+    fun loadDismissedClipTimestamp(context: Context): Long? {
+        val p = prefs(context)
+        return if (p.contains(KEY_DISMISSED_CLIP_TIMESTAMP)) p.getLong(KEY_DISMISSED_CLIP_TIMESTAMP, 0L) else null
+    }
+
+    fun saveDismissedClipTimestamp(context: Context, timestamp: Long) {
+        prefs(context).edit().putLong(KEY_DISMISSED_CLIP_TIMESTAMP, timestamp).apply()
     }
 }

@@ -1,6 +1,7 @@
 package com.lightning.browser.ui.browser
 
 import android.Manifest
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -36,6 +37,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -57,6 +59,8 @@ import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.NorthWest
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -72,6 +76,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -102,6 +107,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import com.lightning.browser.R
 import com.lightning.browser.ui.components.GroupedColumn
@@ -203,6 +211,8 @@ fun BrowserScreen(
     onDnsResolved: () -> Unit = {},
     focusSignal: Int = 0,
     onFocusConsumed: () -> Unit = {},
+    editStartedFromHome: Boolean = false,
+    onClearEditFromHome: () -> Unit = {},
     findSignal: Int = 0,
     onFindConsumed: () -> Unit = {},
     chromeVisible: Boolean = true,
@@ -214,6 +224,12 @@ fun BrowserScreen(
     onRecordVisit: (String, String) -> Unit = { _, _ -> },
     onSearchSubmitted: (String) -> Unit = {},
     onOpenDownloads: () -> Unit = {},
+    onOpenInNewTab: (String) -> Unit = {},
+    showClipboardBanner: Boolean = false,
+    dismissedClipTimestamp: Long? = null,
+    onOpenClipboardBanner: () -> Unit = {},
+    onDismissClipboardBanner: () -> Unit = {},
+    onDismissClipSig: (Long) -> Unit = {},
     onPrintRequest: () -> Unit = {},
     onBackHome: () -> Unit,
     modifier: Modifier = Modifier,
@@ -234,8 +250,29 @@ fun BrowserScreen(
     var duplicateDownload by remember { mutableStateOf<DuplicateDownloadPrompt?>(null) }
     var downloadPopup by remember { mutableStateOf<DownloadPopupState?>(null) }
     var waybackSnapshot by remember(activeIndex) { mutableStateOf<WaybackSnapshot?>(null) }
+    var clipboardUrl by remember(activeIndex) { mutableStateOf<String?>(null) }
     val dnsEndpoint = remember(dnsProvider, customDnsUrl) {
         DohResolver.endpointFor(dnsProvider, customDnsUrl)
+    }
+
+    LaunchedEffect(editing, activeIndex, dismissedClipTimestamp) {
+        if (editing) {
+            val sig = ClipboardUrlHelper.clipSignature(context)
+            if (sig == dismissedClipTimestamp) {
+                clipboardUrl = null
+            } else {
+                val candidate = ClipboardUrlHelper.readClipboardUrl(context)
+                val currentUrl = activeTab?.url.orEmpty()
+                val loadedUrl = loadedUrls[activeIndex].orEmpty()
+                clipboardUrl = if (candidate != null && candidate != currentUrl && candidate != loadedUrl) {
+                    candidate
+                } else {
+                    null
+                }
+            }
+        } else {
+            clipboardUrl = null
+        }
     }
 
     LaunchedEffect(downloadPopup) {
@@ -331,8 +368,17 @@ fun BrowserScreen(
         keyboard?.hide()
     }
 
+    fun cancelEdit() {
+        editing = false
+        keyboard?.hide()
+        if (editStartedFromHome) {
+            onClearEditFromHome()
+            onBackHome()
+        }
+    }
+
     BackHandler(enabled = finding) { closeFind() }
-    BackHandler(enabled = editing) { editing = false }
+    BackHandler(enabled = editing) { cancelEdit() }
 
     val fullscreen = (webViews[activeIndex]?.tag as? WebConfig)?.fullscreen
     BackHandler(enabled = fullscreen?.showing == true) { fullscreen?.hide() }
@@ -376,16 +422,18 @@ fun BrowserScreen(
             editing = editing,
             onQueryChange = { query = it },
             onEditStart = {
+                onClearEditFromHome()
                 editing = true
                 query = activeTab?.url.orEmpty()
             },
-            onCancel = { editing = false },
+            onCancel = { cancelEdit() },
             onSubmit = {
                 val text = query.trim()
                 if (text.isNotEmpty() && tabs.isNotEmpty()) {
                     val url = toUrl(text, searchEngine)
                     onUpdateTab(activeIndex, tabs[activeIndex].copy(url = url, domain = hostOf(url)))
                     if (url == searchEngine.searchUrl(text)) onSearchSubmitted(text)
+                    onClearEditFromHome()
                     editing = false
                     keyboard?.hide()
                 }
@@ -489,15 +537,31 @@ fun BrowserScreen(
             if (editing) {
                 Suggestions(
                     query = query.trim(),
+                    clipboardUrl = clipboardUrl,
                     recentSearches = recentSearches,
                     recentPages = recentPages,
                     bookmarks = bookmarks,
+                    onOpenClipboardUrl = { url ->
+                        onDismissClipSig(ClipboardUrlHelper.clipSignature(context))
+                        onClearEditFromHome()
+                        editing = false
+                        keyboard?.hide()
+                        onOpenInNewTab(url)
+                    },
+                    onFillClipboardUrl = { url ->
+                        query = url
+                    },
+                    onDismissClipboardUrl = {
+                        onDismissClipSig(ClipboardUrlHelper.clipSignature(context))
+                        clipboardUrl = null
+                    },
                     onSearch = { term ->
                         if (tabs.isNotEmpty()) {
                             val url = searchEngine.searchUrl(term)
                             onUpdateTab(activeIndex, tabs[activeIndex].copy(url = url, domain = hostOf(url)))
                             onSearchSubmitted(term)
                         }
+                        onClearEditFromHome()
                         editing = false
                         keyboard?.hide()
                     },
@@ -506,6 +570,7 @@ fun BrowserScreen(
                             val url = "https://$domain"
                             onUpdateTab(activeIndex, tabs[activeIndex].copy(url = url, domain = domain))
                         }
+                        onClearEditFromHome()
                         editing = false
                         keyboard?.hide()
                     },
@@ -513,6 +578,19 @@ fun BrowserScreen(
             }
             if (activeProgress < 100 && !editing) {
                 LightningLoadingIndicator(Modifier.fillMaxSize())
+            }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showClipboardBanner && !editing && !finding && waybackSnapshot == null && downloadPopup == null,
+                enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
+                exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(180)),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+            ) {
+                ClipboardUrlFloatingBanner(
+                    onOpen = onOpenClipboardBanner,
+                    onDismiss = onDismissClipboardBanner,
+                )
             }
             androidx.compose.animation.AnimatedVisibility(
                 visible = waybackSnapshot != null && downloadPopup == null,
@@ -612,6 +690,89 @@ fun BrowserScreen(
                 duplicateDownload = null
             },
         )
+    }
+}
+
+@Composable
+private fun ClipboardUrlFloatingBanner(
+    onOpen: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
+    Surface(
+        onClick = {
+            haptics.confirm()
+            onOpen()
+        },
+        shape = RoundedCornerShape(28.dp),
+        color = colors.surfaceContainerHigh,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            ShapedIcon(
+                icon = Icons.Filled.Link,
+                shape = ExpressiveShapes.Cookie9,
+                container = colors.primaryContainer,
+                content = colors.onPrimaryContainer,
+                size = 44.dp,
+                iconSize = 22.dp,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.clipboard_url_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = stringResource(R.string.clipboard_url_home_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            Button(
+                onClick = {
+                    haptics.confirm()
+                    onOpen()
+                },
+                shape = CircleShape,
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.primary,
+                    contentColor = colors.onPrimary,
+                ),
+                modifier = Modifier.height(36.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.clipboard_url_open),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.clipboard_url_dismiss),
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
     }
 }
 
@@ -1730,9 +1891,13 @@ private fun FindInPageRow(
 @Composable
 private fun Suggestions(
     query: String,
+    clipboardUrl: String?,
     recentSearches: List<String>,
     recentPages: List<RecentPage>,
     bookmarks: List<Bookmark>,
+    onOpenClipboardUrl: (String) -> Unit,
+    onFillClipboardUrl: (String) -> Unit,
+    onDismissClipboardUrl: () -> Unit,
     onSearch: (String) -> Unit,
     onOpenSuggestion: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -1777,6 +1942,15 @@ private fun Suggestions(
             .padding(horizontal = 16.dp)
             .padding(top = 4.dp),
     ) {
+        if (clipboardUrl != null) {
+            ClipboardUrlBanner(
+                url = clipboardUrl,
+                onOpen = { onOpenClipboardUrl(clipboardUrl) },
+                onFill = { onFillClipboardUrl(clipboardUrl) },
+                onDismiss = onDismissClipboardUrl,
+            )
+            Spacer(Modifier.height(12.dp))
+        }
         GroupedColumn(entries.size) { index, shape ->
             val entry = entries[index]
             val isSearchAction = index == 0 && query.isNotEmpty()
@@ -1795,6 +1969,103 @@ private fun Suggestions(
                     }
                 },
             )
+        }
+    }
+}
+
+@Composable
+private fun ClipboardUrlBanner(
+    url: String,
+    onOpen: () -> Unit,
+    onFill: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
+    Surface(
+        onClick = {
+            haptics.confirm()
+            onOpen()
+        },
+        shape = RoundedCornerShape(24.dp),
+        color = colors.surfaceContainerHighest,
+        tonalElevation = 4.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+        ) {
+            ShapedIcon(
+                icon = Icons.Filled.Link,
+                shape = ExpressiveShapes.Cookie9,
+                container = colors.primaryContainer,
+                content = colors.onPrimaryContainer,
+                size = 40.dp,
+                iconSize = 20.dp,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.clipboard_url_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = url,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            IconButton(
+                onClick = {
+                    haptics.click()
+                    onFill()
+                },
+                modifier = Modifier.size(36.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.NorthWest,
+                    contentDescription = stringResource(R.string.clipboard_url_fill),
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Button(
+                onClick = {
+                    haptics.confirm()
+                    onOpen()
+                },
+                shape = CircleShape,
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.primary,
+                    contentColor = colors.onPrimary,
+                ),
+                modifier = Modifier.height(36.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.clipboard_url_open),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.clipboard_url_dismiss),
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
         }
     }
 }

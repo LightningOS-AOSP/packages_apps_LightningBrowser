@@ -252,4 +252,10 @@
 
     <string name="appearance_haptics">Haptic feedback</string>
     <string name="appearance_haptics_summary">Tactile feedback for taps, toggles and gestures</string>
+
+    <string name="clipboard_url_title">Link you copied</string>
+    <string name="clipboard_url_home_subtitle">Open in new tab</string>
+    <string name="clipboard_url_open">Open</string>
+    <string name="clipboard_url_fill">Paste into address bar</string>
+    <string name="clipboard_url_dismiss">Dismiss</string>
 </resources>
