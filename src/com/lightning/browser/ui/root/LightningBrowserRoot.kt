@@ -121,6 +121,7 @@ import com.lightning.browser.ui.settings.SitePermissionsScreen
 import com.lightning.browser.ui.settings.StartupBehavior
 import com.lightning.browser.ui.settings.StartupScreen
 import com.lightning.browser.ui.tabs.BrowserTab
+import com.lightning.browser.ui.tabs.ClosedTab
 import com.lightning.browser.ui.tabs.SavedPagesScreen
 import com.lightning.browser.ui.tabs.TabSwitcherScreen
 import com.lightning.browser.ui.theme.ExpressiveShapes
@@ -330,6 +331,9 @@ fun LightningBrowserRoot(
     val pinnedSites = remember {
         mutableStateListOf<PinnedSite>().apply { if (!incognito) addAll(BrowserStore.loadPinnedSites(context)) }
     }
+    val closedTabs = remember {
+        mutableStateListOf<ClosedTab>().apply { if (!incognito) addAll(BrowserStore.loadClosedTabs(context)) }
+    }
     var showMenu by remember { mutableStateOf(false) }
     var printPreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showQuickArc by remember { mutableStateOf(false) }
@@ -390,6 +394,11 @@ fun LightningBrowserRoot(
     LaunchedEffect(pinnedSites) {
         snapshotFlow { pinnedSites.toList() }.distinctUntilChanged().collect {
             if (!incognito) BrowserStore.savePinnedSites(context, it)
+        }
+    }
+    LaunchedEffect(closedTabs) {
+        snapshotFlow { closedTabs.toList() }.distinctUntilChanged().collect {
+            if (!incognito) BrowserStore.saveClosedTabs(context, it)
         }
     }
     LaunchedEffect(themeMode) { if (!incognito) BrowserStore.saveThemeMode(context, themeMode) }
@@ -667,6 +676,25 @@ fun LightningBrowserRoot(
                 normalizedUrl = norm,
                 createdTabId = createdTabId,
             )
+        }
+    }
+
+    fun recordClosedTab(tab: BrowserTab) {
+        if (incognito || tab.private || tab.url.isBlank()) return
+        val now = System.currentTimeMillis()
+        closedTabs.removeAll { it.url == tab.url || now - it.closedAt > BrowserStore.CLOSED_TAB_EXPIRY_MS }
+        closedTabs.add(
+            0,
+            ClosedTab(
+                title = tab.title,
+                domain = tab.domain,
+                url = tab.url,
+                desktopMode = tab.desktopMode,
+                closedAt = now,
+            ),
+        )
+        while (closedTabs.size > BrowserStore.MAX_CLOSED_TABS) {
+            closedTabs.removeAt(closedTabs.lastIndex)
         }
     }
 
@@ -970,9 +998,11 @@ fun LightningBrowserRoot(
                     LightningScreen.TABS -> TabSwitcherScreen(
                         tabs = tabs,
                         thumbnails = tabThumbnails,
+                        closedTabs = closedTabs,
                         onCloseTab = { index ->
                             if (index in tabs.indices) {
                                 val removed = tabs.removeAt(index)
+                                recordClosedTab(removed)
                                 tabThumbnails.remove(removed.id)
                                 if (!incognito && !removed.private) {
                                     BrowserStore.deleteTabThumbnail(context, removed.id)
@@ -994,6 +1024,7 @@ fun LightningBrowserRoot(
                             }
                         },
                         onCloseAll = {
+                            tabs.forEach { recordClosedTab(it) }
                             tabs.clear()
                             tabThumbnails.clear()
                             if (!incognito) {
@@ -1012,6 +1043,23 @@ fun LightningBrowserRoot(
                         onOpenTab = {
                             activeIndex = it
                             screen = LightningScreen.BROWSER
+                        },
+                        onRestoreClosedTab = { closed ->
+                            closedTabs.removeAll { it.id == closed.id }
+                            tabs.add(
+                                BrowserTab(
+                                    title = closed.title,
+                                    domain = closed.domain,
+                                    url = closed.url,
+                                    desktopMode = closed.desktopMode,
+                                    private = incognito,
+                                ),
+                            )
+                            activeIndex = tabs.size - 1
+                            screen = LightningScreen.BROWSER
+                        },
+                        onClearClosedTabs = {
+                            closedTabs.clear()
                         },
                     )
                     LightningScreen.SAVED_PAGES -> SavedPagesScreen(

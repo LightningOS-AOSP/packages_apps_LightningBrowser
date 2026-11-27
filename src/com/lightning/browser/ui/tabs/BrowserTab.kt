@@ -10,3 +10,12 @@ data class BrowserTab(
     val desktopMode: Boolean = false,
     val id: String = UUID.randomUUID().toString(),
 )
+
+data class ClosedTab(
+    val title: String,
+    val domain: String,
+    val url: String,
+    val desktopMode: Boolean = false,
+    val closedAt: Long = System.currentTimeMillis(),
+    val id: String = UUID.randomUUID().toString(),
+)

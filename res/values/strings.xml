@@ -261,4 +261,9 @@
 
     <string name="duplicate_tab_title">Tab already open</string>
     <string name="duplicate_tab_switch">Switch</string>
+
+    <string name="tabs_recently_closed_header">Recently closed</string>
+    <string name="tabs_recently_closed_clear">Clear</string>
+    <string name="tabs_recently_closed_note">Keeps up to 10 closed tabs · Expires after 24 hours</string>
+    <string name="tabs_recently_closed_just_now">Just now</string>
 </resources>

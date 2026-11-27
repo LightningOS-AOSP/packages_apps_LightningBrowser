@@ -10,6 +10,7 @@ import com.lightning.browser.ui.settings.HistoryEntry
 import com.lightning.browser.ui.settings.SearchEngine
 import com.lightning.browser.ui.settings.StartupBehavior
 import com.lightning.browser.ui.tabs.BrowserTab
+import com.lightning.browser.ui.tabs.ClosedTab
 import com.lightning.browser.ui.theme.ThemeMode
 import java.io.File
 import java.io.FileOutputStream
@@ -43,6 +44,9 @@ object BrowserStore {
     private const val KEY_DEFAULT_BROWSER_PROMPTED = "default_browser_prompted"
     private const val KEY_HAPTIC_FEEDBACK = "haptic_feedback"
     private const val KEY_DISMISSED_CLIP_TIMESTAMP = "dismissed_clip_timestamp"
+    private const val KEY_CLOSED_TABS = "recently_closed_tabs"
+    const val MAX_CLOSED_TABS = 10
+    const val CLOSED_TAB_EXPIRY_MS = 24L * 60L * 60L * 1000L
     private const val MAX_HISTORY = 200
     private const val MAX_DOWNLOADS = 200
     private const val MAX_SEARCHES = 10
@@ -418,5 +422,52 @@ object BrowserStore {
 
     fun saveDismissedClipTimestamp(context: Context, timestamp: Long) {
         prefs(context).edit().putLong(KEY_DISMISSED_CLIP_TIMESTAMP, timestamp).apply()
+    }
+
+    fun loadClosedTabs(context: Context): List<ClosedTab> {
+        val raw = prefs(context).getString(KEY_CLOSED_TABS, null) ?: return emptyList()
+        val now = System.currentTimeMillis()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val entry = array.getJSONObject(i)
+                    val url = entry.optString("url", "")
+                    val closedAt = entry.optLong("closedAt", 0L)
+                    if (url.isNotBlank() && now - closedAt <= CLOSED_TAB_EXPIRY_MS) {
+                        add(
+                            ClosedTab(
+                                id = entry.optString("id").ifBlank { java.util.UUID.randomUUID().toString() },
+                                title = entry.optString("title", ""),
+                                domain = entry.optString("domain", ""),
+                                url = url,
+                                desktopMode = entry.optBoolean("desktopMode", false),
+                                closedAt = closedAt,
+                            ),
+                        )
+                    }
+                }
+            }.take(MAX_CLOSED_TABS)
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveClosedTabs(context: Context, tabs: List<ClosedTab>) {
+        val now = System.currentTimeMillis()
+        val array = JSONArray()
+        tabs.asSequence()
+            .filter { it.url.isNotBlank() && now - it.closedAt <= CLOSED_TAB_EXPIRY_MS }
+            .take(MAX_CLOSED_TABS)
+            .forEach { tab ->
+                array.put(
+                    JSONObject()
+                        .put("id", tab.id)
+                        .put("title", tab.title)
+                        .put("domain", tab.domain)
+                        .put("url", tab.url)
+                        .put("desktopMode", tab.desktopMode)
+                        .put("closedAt", tab.closedAt),
+                )
+            }
+        prefs(context).edit().putString(KEY_CLOSED_TABS, array.toString()).apply()
     }
 }
