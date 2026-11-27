@@ -4,6 +4,7 @@ import android.util.Log
 import android.webkit.CookieManager
 import com.lightning.browser.ui.settings.DnsProvider
 import java.io.BufferedInputStream
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
@@ -13,6 +14,8 @@ import java.net.Socket
 import java.net.URL
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
+import java.util.zip.GZIPInputStream
+import java.util.zip.InflaterInputStream
 import javax.net.ssl.HttpsURLConnection
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLPeerUnverifiedException
@@ -31,14 +34,22 @@ object DohResolver {
 
     private val cache = ConcurrentHashMap<String, CacheEntry>()
     private const val CACHE_TTL_MS = 300_000L
-    private const val MAX_ANSWERS = 8
+    private const val MAX_ANSWERS = 16
+
+    private val BOOTSTRAP_IPS = mapOf(
+        "cloudflare-dns.com" to listOf("1.1.1.1", "1.0.0.1"),
+        "dns.google" to listOf("8.8.8.8", "8.8.4.4"),
+        "dns.quad9.net" to listOf("9.9.9.9", "149.112.112.112"),
+    )
 
     fun endpointFor(provider: DnsProvider, customUrl: String): String? = when (provider) {
         DnsProvider.OFF -> null
         DnsProvider.CLOUDFLARE -> "https://cloudflare-dns.com/dns-query"
         DnsProvider.GOOGLE -> "https://dns.google/dns-query"
         DnsProvider.QUAD9 -> "https://dns.quad9.net/dns-query"
-        DnsProvider.CUSTOM -> customUrl.trim().ifBlank { null }
+        DnsProvider.CUSTOM -> customUrl.trim().ifBlank { null }?.let {
+            if (it.startsWith("https://", ignoreCase = true)) it else "https://${it.removePrefix("http://")}"
+        }
     }
 
     fun addressesFor(host: String, endpoint: String): List<String> {
@@ -55,35 +66,58 @@ object DohResolver {
 
     private fun query(endpoint: String, host: String): List<String> {
         val addresses = mutableListOf<String>()
+        val separator = if (endpoint.contains('?')) '&' else '?'
+        val endpointHost = runCatching { URL(endpoint).host }.getOrNull()
+        val bootstrap = endpointHost?.let { BOOTSTRAP_IPS[it] }.orEmpty()
         for (type in listOf(1, 28)) { // A, AAAA
             val message = question(host, type)
             val encoded = Base64.getUrlEncoder().withoutPadding().encodeToString(message)
-            val separator = if (endpoint.contains('?')) '&' else '?'
-            val connection = (URL("$endpoint${separator}dns=$encoded").openConnection() as? HttpURLConnection)
-                ?: run { Log.e(TAG, "openConnection failed for $host"); return emptyList() }
-            try {
-                connection.requestMethod = "GET"
-                connection.setRequestProperty("Accept", "application/dns-message")
-                connection.setRequestProperty("User-Agent", "Lightning")
-                connection.connectTimeout = 4000
-                connection.readTimeout = 4000
-                val code = connection.responseCode
-                if (code !in 200..299) {
-                    Log.e(TAG, "$endpoint http $code for $host")
-                    connection.disconnect()
-                    continue
+            val queryUrl = "$endpoint${separator}dns=$encoded"
+            var body = queryViaUrlConnection(queryUrl, host, type)
+            if (body == null && bootstrap.isNotEmpty()) {
+                for (ip in bootstrap) {
+                    val resp = PinnedHttp.fetchOnce(
+                        url = queryUrl,
+                        ip = ip,
+                        method = "GET",
+                        userAgent = "Lightning",
+                        headers = mapOf("Accept" to "application/dns-message"),
+                    )
+                    if (resp != null && resp.statusCode in 200..299 && resp.body.isNotEmpty()) {
+                        body = resp.body
+                        break
+                    }
                 }
-                val body = connection.inputStream.use { it.readBytes() }
+            }
+            if (body != null) {
                 addresses.addAll(parseAnswers(body))
-            } catch (e: Exception) {
-                Log.e(TAG, "DoH query failed for $host type=$type", e)
-                connection.disconnect()
-                if (addresses.isEmpty()) continue
-            } finally {
-                connection.disconnect()
             }
         }
         return addresses
+    }
+
+    private fun queryViaUrlConnection(queryUrl: String, host: String, type: Int): ByteArray? {
+        val connection = (URL(queryUrl).openConnection() as? HttpURLConnection)
+            ?: run { Log.e(TAG, "openConnection failed for $host"); return null }
+        return try {
+            connection.requestMethod = "GET"
+            connection.setRequestProperty("Accept", "application/dns-message")
+            connection.setRequestProperty("User-Agent", "Lightning")
+            connection.connectTimeout = 4000
+            connection.readTimeout = 4000
+            val code = connection.responseCode
+            if (code !in 200..299) {
+                Log.e(TAG, "$queryUrl http $code for $host")
+                null
+            } else {
+                connection.inputStream.use { it.readBytes() }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "DoH query failed for $host type=$type", e)
+            null
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun question(host: String, type: Int): ByteArray {
@@ -169,6 +203,7 @@ object DohResolver {
 object PinnedHttp {
 
     private const val MAX_ADDRESSES = 4
+    private const val MAX_REDIRECTS = 5
     private val DROPPED_HEADERS = setOf(
         "transfer-encoding",
         "content-length",
@@ -188,21 +223,43 @@ object PinnedHttp {
         dnsEndpoint: String,
         userAgent: String,
         headers: Map<String, String>,
+        method: String = "GET",
+        followRedirects: Boolean = true,
     ): Response? {
-        val parsed = runCatching { URL(url) }.getOrNull() ?: return null
-        val host = parsed.host ?: return null
-        val addresses = DohResolver.addressesFor(host, dnsEndpoint).take(MAX_ADDRESSES)
-        for (ip in addresses) {
-            Log.d("LightningDoH", "fetch $url -> $host@$ip")
-            val response = fetchOnce(url, ip, userAgent, headers) ?: continue
-            return if (response.statusCode in 300..399) null else response
+        var currentUrl = url
+        var currentMethod = method
+        val requestHeaders = LinkedHashMap(headers)
+        val maxHops = if (followRedirects) MAX_REDIRECTS + 1 else 1
+        repeat(maxHops) {
+            val parsed = runCatching { URL(currentUrl) }.getOrNull() ?: return null
+            if (!parsed.protocol.equals("https", ignoreCase = true)) return null
+            val host = parsed.host ?: return null
+            val addresses = DohResolver.addressesFor(host, dnsEndpoint).take(MAX_ADDRESSES)
+            var hopResponse: Response? = null
+            for (ip in addresses) {
+                Log.d("LightningDoH", "fetch $currentMethod $currentUrl -> $host@$ip")
+                hopResponse = fetchOnce(currentUrl, ip, currentMethod, userAgent, requestHeaders)
+                if (hopResponse != null) break
+            }
+            val response = hopResponse ?: return null
+            if (response.statusCode !in 300..399 || !followRedirects) return response
+            val location = response.headers["location"] ?: return null
+            val nextUrl = runCatching { URL(parsed, location).toString() }.getOrNull() ?: return null
+            currentUrl = nextUrl
+            if (response.statusCode == 303 && !currentMethod.equals("HEAD", ignoreCase = true)) {
+                currentMethod = "GET"
+            }
+            CookieManager.getInstance().getCookie(currentUrl)?.let { cookie ->
+                requestHeaders["Cookie"] = cookie
+            } ?: requestHeaders.remove("Cookie")
         }
         return null
     }
 
-    private fun fetchOnce(
+    internal fun fetchOnce(
         url: String,
         ip: String,
+        method: String,
         userAgent: String,
         headers: Map<String, String>,
     ): Response? {
@@ -214,7 +271,8 @@ object PinnedHttp {
         try {
             raw.connect(InetSocketAddress(ip, port), 10_000)
             raw.soTimeout = 15_000
-        } catch (_: IOException) {
+        } catch (e: IOException) {
+            Log.w("LightningDoH", "connect failed $host@$ip: ${e.message}")
             runCatching { raw.close() }
             return null
         }
@@ -232,7 +290,7 @@ object PinnedHttp {
                 throw SSLPeerUnverifiedException("Certificate does not match $host")
             }
             val request = buildString {
-                append("GET ").append(path).append(" HTTP/1.1\r\n")
+                append(method).append(' ').append(path).append(" HTTP/1.1\r\n")
                 append("Host: ").append(host).append(if (port == 443) "" else ":$port").append("\r\n")
                 append("Connection: close\r\n")
                 append("User-Agent: ").append(userAgent).append("\r\n")
@@ -257,9 +315,24 @@ object PinnedHttp {
             val responseHeaders = readHeaders(input, cookies)
             val cookieManager = CookieManager.getInstance()
             cookies.forEach { cookie -> cookieManager.setCookie(url, cookie) }
-            val body = readBody(input, responseHeaders, 64 * 1024 * 1024)
+            val rawBody = if (method.equals("HEAD", ignoreCase = true) || code == 204 || code == 304 || code in 300..399) {
+                ByteArray(0)
+            } else {
+                readBody(input, responseHeaders, 64 * 1024 * 1024)
+            }
+            val encoding = responseHeaders["content-encoding"]?.trim()?.lowercase()
+            val body = when (encoding) {
+                null, "", "identity" -> rawBody
+                "gzip", "x-gzip" -> GZIPInputStream(ByteArrayInputStream(rawBody)).use { it.readBytes() }
+                "deflate" -> InflaterInputStream(ByteArrayInputStream(rawBody)).use { it.readBytes() }
+                else -> {
+                    Log.w("LightningDoH", "unsupported content-encoding '$encoding' for $host")
+                    return null
+                }
+            }
             Response(code, responseHeaders.filterKeys { it !in DROPPED_HEADERS }, body)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w("LightningDoH", "fetchOnce failed $host@$ip: ${e.message}")
             null
         } finally {
             runCatching { tls?.close() }

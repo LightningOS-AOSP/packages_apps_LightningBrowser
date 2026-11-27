@@ -151,6 +151,22 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
         )
     }
     var addressFocusSignal by remember { mutableStateOf(0) }
+    val screenBackStack = remember { mutableStateListOf<LightningScreen>() }
+
+    fun navigateTo(target: LightningScreen) {
+        if (screen != target) {
+            screenBackStack.add(screen)
+            screen = target
+        }
+    }
+
+    fun navigateBack(fallback: LightningScreen = LightningScreen.HOME) {
+        screen = if (screenBackStack.isNotEmpty()) {
+            screenBackStack.removeAt(screenBackStack.lastIndex)
+        } else {
+            fallback
+        }
+    }
 
     var themeMode by remember {
         mutableStateOf(if (incognito) ThemeMode.DARK else BrowserStore.loadThemeMode(context))
@@ -323,6 +339,7 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
             tabs[index] = tabs[index].copy(url = url, domain = hostOf(url))
             activeIndex = index
         }
+        screenBackStack.clear()
         screen = LightningScreen.BROWSER
     }
 
@@ -360,19 +377,26 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
         when (screen) {
             LightningScreen.BROWSER -> {
                 val view = webViews[activeIndex]
-                if (view?.canGoBack() == true) view.goBack() else screen = LightningScreen.HOME
+                if (view?.canGoBack() == true) {
+                    view.goBack()
+                } else {
+                    screenBackStack.clear()
+                    screen = LightningScreen.HOME
+                }
             }
             LightningScreen.TABS -> {
+                screenBackStack.clear()
                 screen = if (tabs.getOrNull(activeIndex)?.url?.isNotEmpty() == true) {
                     LightningScreen.BROWSER
                 } else {
                     LightningScreen.HOME
                 }
             }
-            LightningScreen.SETTINGS -> screen = LightningScreen.HOME
-            LightningScreen.BOOKMARKS, LightningScreen.HISTORY -> screen = LightningScreen.HOME
-            LightningScreen.SITE_PERMISSIONS -> screen = LightningScreen.PRIVACY
-            else -> screen = LightningScreen.SETTINGS
+            LightningScreen.SETTINGS, LightningScreen.BOOKMARKS, LightningScreen.HISTORY -> {
+                navigateBack(LightningScreen.HOME)
+            }
+            LightningScreen.SITE_PERMISSIONS -> navigateBack(LightningScreen.PRIVACY)
+            else -> navigateBack(LightningScreen.SETTINGS)
         }
     }
 
@@ -471,6 +495,7 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                         onBlocked = { blockedCount++ },
                         onDnsResolved = { dnsResolvedCount++ },
                         focusSignal = addressFocusSignal,
+                        onFocusConsumed = { addressFocusSignal = 0 },
                         chromeVisible = chromeVisible,
                         onChromeVisibleChange = { chromeVisible = it },
                         recentSearches = recentSearches,
@@ -479,53 +504,55 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                         onUpdateTab = { index, tab -> if (index in tabs.indices) tabs[index] = tab },
                         onRecordVisit = { title, domain -> recordVisit(title, domain) },
                         onSearchSubmitted = { recordSearch(it) },
+                        onOpenDownloads = { navigateTo(LightningScreen.DOWNLOADS) },
                         onBackHome = { screen = LightningScreen.HOME },
                     )
                     LightningScreen.SETTINGS -> SettingsRootScreen(
                         startupBehavior = startupBehavior,
                         themeMode = themeMode,
                         searchEngine = searchEngine,
-                        onOpenStartup = { screen = LightningScreen.STARTUP },
-                        onOpenAppearance = { screen = LightningScreen.APPEARANCE },
-                        onOpenPrivacy = { screen = LightningScreen.PRIVACY },
-                        onOpenSearchEngine = { screen = LightningScreen.SEARCH_ENGINE },
-                        onOpenDownloads = { screen = LightningScreen.DOWNLOADS },
-                        onOpenAbout = { screen = LightningScreen.ABOUT },
-                        onBack = { screen = LightningScreen.HOME },
+                        onOpenStartup = { navigateTo(LightningScreen.STARTUP) },
+                        onOpenAppearance = { navigateTo(LightningScreen.APPEARANCE) },
+                        onOpenPrivacy = { navigateTo(LightningScreen.PRIVACY) },
+                        onOpenSearchEngine = { navigateTo(LightningScreen.SEARCH_ENGINE) },
+                        onOpenDownloads = { navigateTo(LightningScreen.DOWNLOADS) },
+                        onOpenAbout = { navigateTo(LightningScreen.ABOUT) },
+                        onBack = { navigateBack(LightningScreen.HOME) },
                     )
                     LightningScreen.STARTUP -> StartupScreen(
                         startupBehavior = startupBehavior,
                         onStartupBehaviorSelect = { startupBehavior = it },
-                        onBack = { screen = LightningScreen.SETTINGS },
+                        onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.SEARCH_ENGINE -> SearchEngineScreen(
                         engine = searchEngine,
                         onEngineSelect = { searchEngine = it },
-                        onBack = { screen = LightningScreen.SETTINGS },
+                        onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.DOWNLOADS -> DownloadsScreen(
-                        onBack = { screen = LightningScreen.SETTINGS },
+                        onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.ABOUT -> AboutScreen(
                         onOpenWebsite = { openSite(it) },
-                        onBack = { screen = LightningScreen.SETTINGS },
+                        onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.BOOKMARKS -> BookmarksScreen(
                         bookmarks = bookmarks,
                         onOpen = { openSite(it.domain) },
                         onDelete = { bookmarks.remove(it) },
-                        onBack = { screen = LightningScreen.HOME },
+                        onBack = { navigateBack(LightningScreen.HOME) },
                     )
                     LightningScreen.HISTORY -> HistoryScreen(
                         history = history,
+                        onOpen = { openSite(it.domain) },
                         onDelete = { history.remove(it) },
                         onClear = { history.clear() },
-                        onBack = { screen = LightningScreen.HOME },
+                        onBack = { navigateBack(LightningScreen.HOME) },
                     )
                     LightningScreen.APPEARANCE -> AppearanceScreen(
                         themeMode = themeMode,
                         onThemeModeSelect = { themeMode = it },
-                        onBack = { screen = LightningScreen.SETTINGS },
+                        onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.DNS -> DnsScreen(
                         provider = dnsProvider,
@@ -535,7 +562,7 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                         onProviderSelect = { dnsProvider = it },
                         onCustomUrlChange = { customDnsUrl = it },
                         onBypassTrustedChange = { bypassTrusted = it },
-                        onBack = { screen = LightningScreen.SETTINGS },
+                        onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.PRIVACY -> PrivacyScreen(
                         provider = dnsProvider,
@@ -544,13 +571,13 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                         fingerprintLock = fingerprintLock,
                         onAdBlockingChange = { adBlocking = it },
                         onFingerprintChange = { fingerprintLock = it },
-                        onOpenDns = { screen = LightningScreen.DNS },
-                        onOpenSitePermissions = { screen = LightningScreen.SITE_PERMISSIONS },
+                        onOpenDns = { navigateTo(LightningScreen.DNS) },
+                        onOpenSitePermissions = { navigateTo(LightningScreen.SITE_PERMISSIONS) },
                         onClearData = { showClearData = true },
-                        onBack = { screen = LightningScreen.SETTINGS },
+                        onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.SITE_PERMISSIONS -> SitePermissionsScreen(
-                        onBack = { screen = LightningScreen.PRIVACY },
+                        onBack = { navigateBack(LightningScreen.PRIVACY) },
                     )
                     }
                 }
@@ -571,8 +598,6 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                         backEnabled = navStates[activeIndex]?.canGoBack == true,
                         forwardEnabled = navStates[activeIndex]?.canGoForward == true,
                         onNewTab = {
-                            tabs.add(BrowserTab(title = "New tab", domain = "", private = incognito))
-                            activeIndex = tabs.size - 1
                             screen = LightningScreen.TABS
                         },
                         onBookmark = {
@@ -601,7 +626,7 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                     tabs.getOrNull(activeIndex)?.url?.isNotEmpty() == true,
                 onOpen = {
                     showMenu = false
-                    screen = it
+                    navigateTo(it)
                 },
             )
             pendingBookmarkTab?.let { tab ->

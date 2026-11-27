@@ -1,6 +1,7 @@
 package com.lightning.browser.ui.browser
 
 import android.app.DownloadManager
+import android.content.ContentUris
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
@@ -13,14 +14,21 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.provider.Settings
 import android.util.Base64
+import android.webkit.CookieManager
 import android.webkit.MimeTypeMap
 import android.widget.Toast
+import com.lightning.browser.R
+import com.lightning.browser.ui.BrowserStore
 import com.lightning.browser.ui.settings.DownloadItem
 import com.lightning.browser.ui.settings.DownloadState
 import java.io.File
 import java.io.FileOutputStream
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 
 // Downloads land in the device's internal Download folder via the system
 // DownloadManager. "All files access" is what Android calls the file manager
@@ -52,6 +60,41 @@ object BrowserDownloads {
         }
     }
 
+    fun downloadExists(context: Context, fileName: String): Boolean {
+        val clean = sanitize(fileName)
+        val directFile = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            clean,
+        )
+        if (directFile.exists()) return true
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val projection = arrayOf(MediaStore.Downloads._ID)
+            val selection = "${MediaStore.Downloads.DISPLAY_NAME} = ? AND ${MediaStore.Downloads.IS_PENDING} = 0"
+            runCatching {
+                resolver.query(collection, projection, selection, arrayOf(clean), null)?.use { cursor ->
+                    if (cursor.moveToFirst()) return true
+                }
+            }
+        }
+        return false
+    }
+
+    fun nextAvailableName(context: Context, fileName: String): String {
+        val clean = sanitize(fileName)
+        if (!downloadExists(context, clean)) return clean
+        val dot = clean.lastIndexOf('.')
+        val base = if (dot > 0) clean.substring(0, dot) else clean
+        val ext = if (dot > 0) clean.substring(dot) else ""
+        var counter = 1
+        while (true) {
+            val candidate = "$base ($counter)$ext"
+            if (!downloadExists(context, candidate)) return candidate
+            counter++
+        }
+    }
+
     fun enqueue(
         context: Context,
         url: String,
@@ -59,8 +102,18 @@ object BrowserDownloads {
         contentDisposition: String?,
         mimeType: String?,
     ): Boolean {
+        val fileName = fileNameFrom(contentDisposition, url, mimeType)
+        return enqueueWithFileName(context, url, userAgent, fileName, mimeType)
+    }
+
+    fun enqueueWithFileName(
+        context: Context,
+        url: String,
+        userAgent: String?,
+        fileName: String,
+        mimeType: String?,
+    ): Boolean {
         if (url.startsWith("data:", ignoreCase = true)) {
-            val fileName = fileNameFrom(contentDisposition, url, mimeType)
             return saveDataOrBlob(context, url, fileName, mimeType)
         }
         val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return false
@@ -68,24 +121,137 @@ object BrowserDownloads {
         if (scheme != "http" && scheme != "https") {
             return false
         }
-        if (!hasFileAccess(context)) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && !hasFileAccess(context)) {
             requestFileAccess(context)
             return false
         }
-        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager ?: return false
-        val fileName = fileNameFrom(contentDisposition, url, mimeType)
-        return runCatching {
-            val request = DownloadManager.Request(uri)
-                .setTitle(fileName)
-                .setDescription(url)
-                .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setAllowedOverMetered(true)
-                .setAllowedOverRoaming(true)
-            if (!mimeType.isNullOrEmpty()) request.setMimeType(mimeType)
-            if (!userAgent.isNullOrEmpty()) request.addRequestHeader("User-Agent", userAgent)
-            manager.enqueue(request) != -1L
-        }.getOrDefault(false)
+        val cleanName = sanitize(fileName)
+        BrowserStore.unhideDownload(context, cleanName)
+        val appContext = context.applicationContext
+        val dir = File(appContext.filesDir, "downloads").apply { if (!exists()) mkdirs() }
+        val id = -(idGen.incrementAndGet())
+        val tempFile = File(dir, "dl_${-id}_$cleanName.part")
+        val task = HttpDownloadTask(
+            id = id,
+            url = url,
+            userAgent = userAgent,
+            fileName = cleanName,
+            mimeType = mimeType,
+            domain = uri.host.orEmpty(),
+            tempFile = tempFile,
+        )
+        tasks[id] = task
+        startTask(appContext, task)
+        return true
+    }
+
+    private class HttpDownloadTask(
+        val id: Long,
+        val url: String,
+        val userAgent: String?,
+        val fileName: String,
+        val mimeType: String?,
+        val domain: String,
+        val tempFile: File,
+        val timestamp: Long = System.currentTimeMillis(),
+    ) {
+        @Volatile var savedBytes: Long = 0L
+        @Volatile var totalBytes: Long = -1L
+        @Volatile var state: DownloadState = DownloadState.DOWNLOADING
+        @Volatile var failed: Boolean = false
+        @Volatile var cancelled: Boolean = false
+        @Volatile var connection: HttpURLConnection? = null
+    }
+
+    private val idGen = AtomicLong(1000L)
+    private val tasks = ConcurrentHashMap<Long, HttpDownloadTask>()
+    private val executor = Executors.newCachedThreadPool()
+
+    private fun startTask(appContext: Context, task: HttpDownloadTask) {
+        task.state = DownloadState.DOWNLOADING
+        task.failed = false
+        executor.execute {
+            var conn: HttpURLConnection? = null
+            try {
+                val existing = if (task.tempFile.exists()) task.tempFile.length() else 0L
+                task.savedBytes = existing
+                conn = (URL(task.url).openConnection() as HttpURLConnection).apply {
+                    instanceFollowRedirects = true
+                    connectTimeout = 15_000
+                    readTimeout = 30_000
+                    if (!task.userAgent.isNullOrEmpty()) setRequestProperty("User-Agent", task.userAgent)
+                    CookieManager.getInstance().getCookie(task.url)?.let { cookie ->
+                        setRequestProperty("Cookie", cookie)
+                    }
+                    if (existing > 0L) {
+                        setRequestProperty("Range", "bytes=$existing-")
+                    }
+                }
+                task.connection = conn
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    task.failed = true
+                    task.state = DownloadState.COMPLETE
+                    return@execute
+                }
+                val isPartial = code == HttpURLConnection.HTTP_PARTIAL && existing > 0L
+                val contentLen = conn.contentLengthLong
+                task.totalBytes = when {
+                    isPartial && contentLen > 0L -> existing + contentLen
+                    contentLen > 0L -> contentLen
+                    else -> task.totalBytes
+                }
+                if (!isPartial) {
+                    task.savedBytes = 0L
+                }
+                val effectiveMime = task.mimeType?.takeIf {
+                    it.isNotBlank() && it != "application/octet-stream"
+                } ?: conn.contentType?.substringBefore(';')?.trim()?.ifBlank { null }
+                    ?: mimeTypeFromFileName(task.fileName)
+                    ?: "application/octet-stream"
+
+                conn.inputStream.use { input ->
+                    FileOutputStream(task.tempFile, isPartial).use { out ->
+                        val buffer = ByteArray(16 * 1024)
+                        while (task.state == DownloadState.DOWNLOADING) {
+                            val read = input.read(buffer)
+                            if (read == -1) break
+                            out.write(buffer, 0, read)
+                            task.savedBytes += read
+                        }
+                        out.flush()
+                    }
+                }
+                if (task.state == DownloadState.DOWNLOADING) {
+                    val finalSize = task.tempFile.length()
+                    val savedUri = saveFileFromTemp(appContext, task.fileName, effectiveMime, task.tempFile)
+                    runCatching { task.tempFile.delete() }
+                    if (savedUri != null) {
+                        BrowserStore.addDownload(
+                            appContext,
+                            BrowserStore.DownloadRecord(
+                                title = task.fileName,
+                                domain = task.domain,
+                                sizeBytes = finalSize,
+                                timestamp = task.timestamp,
+                            ),
+                        )
+                        tasks.remove(task.id)
+                    } else {
+                        task.failed = true
+                        task.state = DownloadState.COMPLETE
+                    }
+                }
+            } catch (_: Exception) {
+                if (task.state == DownloadState.DOWNLOADING) {
+                    task.failed = true
+                    task.state = DownloadState.COMPLETE
+                }
+            } finally {
+                task.connection = null
+                runCatching { conn?.disconnect() }
+            }
+        }
     }
 
     private val pendingBlobFiles = ConcurrentHashMap<String, File>()
@@ -97,11 +263,20 @@ object BrowserDownloads {
         mimeType: String,
         base64Chunk: String,
         isLast: Boolean,
+        onStart: ((fileName: String) -> Unit)? = null,
+        onComplete: ((fileName: String) -> Unit)? = null,
+        onDuplicate: ((existingName: String, suggestedName: String, mimeType: String, tempFile: File) -> Unit)? = null,
     ) {
         runCatching {
             val tempDir = File(context.cacheDir, "downloads").apply { if (!exists()) mkdirs() }
+            var isFirst = false
             val tempFile = pendingBlobFiles.getOrPut(downloadId) {
+                isFirst = true
                 File(tempDir, "blob_${System.currentTimeMillis()}_${downloadId.hashCode()}.tmp")
+            }
+            if (isFirst && onStart != null) {
+                val previewName = sanitize(fileName.trim().ifEmpty { "download" })
+                Handler(Looper.getMainLooper()).post { onStart(previewName) }
             }
             if (base64Chunk.isNotEmpty()) {
                 val bytes = Base64.decode(base64Chunk, Base64.DEFAULT)
@@ -118,12 +293,60 @@ object BrowserDownloads {
                     else -> mimeTypeFromFileName(rawName) ?: extractedMime ?: "application/octet-stream"
                 }
                 val safeName = ensureExtension(sanitize(rawName), effectiveMime)
-                saveFileFromTemp(context, safeName, effectiveMime, tempFile)
-                tempFile.delete()
+                if (onDuplicate != null && downloadExists(context, safeName)) {
+                    val suggested = nextAvailableName(context, safeName)
+                    Handler(Looper.getMainLooper()).post {
+                        onDuplicate(safeName, suggested, effectiveMime, tempFile)
+                    }
+                } else {
+                    val finalSize = tempFile.length()
+                    val savedUri = saveFileFromTemp(context, safeName, effectiveMime, tempFile)
+                    tempFile.delete()
+                    if (savedUri != null) {
+                        BrowserStore.addDownload(
+                            context,
+                            BrowserStore.DownloadRecord(
+                                title = safeName,
+                                domain = "",
+                                sizeBytes = finalSize,
+                                timestamp = System.currentTimeMillis(),
+                            ),
+                        )
+                    }
+                    if (onComplete != null) {
+                        Handler(Looper.getMainLooper()).post { onComplete(safeName) }
+                    }
+                }
             }
         }.onFailure {
             pendingBlobFiles.remove(downloadId)?.delete()
         }
+    }
+
+    fun completePendingBlob(
+        context: Context,
+        fileName: String,
+        mimeType: String,
+        tempFile: File,
+    ): Boolean {
+        val cleanName = sanitize(fileName)
+        val finalSize = tempFile.length()
+        val saved = runCatching {
+            saveFileFromTemp(context, cleanName, mimeType, tempFile) != null
+        }.getOrDefault(false)
+        if (saved) {
+            BrowserStore.addDownload(
+                context,
+                BrowserStore.DownloadRecord(
+                    title = cleanName,
+                    domain = "",
+                    sizeBytes = finalSize,
+                    timestamp = System.currentTimeMillis(),
+                ),
+            )
+        }
+        runCatching { tempFile.delete() }
+        return saved
     }
 
     fun saveDataOrBlob(
@@ -150,6 +373,15 @@ object BrowserDownloads {
 
             val saved = saveFileToDownloads(context, safeName, effectiveMime, bytes)
             if (saved != null) {
+                BrowserStore.addDownload(
+                    context,
+                    BrowserStore.DownloadRecord(
+                        title = safeName,
+                        domain = "",
+                        sizeBytes = bytes.size.toLong(),
+                        timestamp = System.currentTimeMillis(),
+                    ),
+                )
                 notifyDownloadComplete(context, safeName)
                 true
             } else {
@@ -220,6 +452,7 @@ object BrowserDownloads {
     }
 
     private fun notifyDownloadComplete(context: Context, fileName: String) {
+        BrowserStore.unhideDownload(context, fileName)
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(context, "Downloaded $fileName", Toast.LENGTH_SHORT).show()
         }
@@ -277,57 +510,262 @@ object BrowserDownloads {
     }
 
     fun pause(context: Context, downloadId: Long) {
+        tasks[downloadId]?.let { task ->
+            task.state = DownloadState.PAUSED
+            executor.execute { runCatching { task.connection?.disconnect() } }
+            return
+        }
         if (downloadId < 0) return
-        val values = ContentValues().apply { put(COLUMN_CONTROL, CONTROL_PAUSED) }
-        context.contentResolver.update(downloadUri(downloadId), values, null, null)
+        runCatching {
+            val values = ContentValues().apply { put(COLUMN_CONTROL, CONTROL_PAUSED) }
+            context.contentResolver.update(downloadUri(downloadId), values, null, null)
+        }
     }
 
     fun resume(context: Context, downloadId: Long) {
+        tasks[downloadId]?.let { task ->
+            if (task.state == DownloadState.PAUSED) {
+                startTask(context.applicationContext, task)
+            }
+            return
+        }
         if (downloadId < 0) return
-        val values = ContentValues().apply { put(COLUMN_CONTROL, CONTROL_RUN) }
-        context.contentResolver.update(downloadUri(downloadId), values, null, null)
+        runCatching {
+            val values = ContentValues().apply { put(COLUMN_CONTROL, CONTROL_RUN) }
+            context.contentResolver.update(downloadUri(downloadId), values, null, null)
+        }
+    }
+
+    fun cancel(context: Context, downloadId: Long) {
+        tasks[downloadId]?.let { task ->
+            task.cancelled = true
+            task.state = DownloadState.COMPLETE
+            executor.execute {
+                runCatching { task.connection?.disconnect() }
+                runCatching { task.tempFile.delete() }
+            }
+            return
+        }
+        if (downloadId < 0) return
+        runCatching {
+            (context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager)?.remove(downloadId)
+        }
+    }
+
+    fun retry(context: Context, downloadId: Long) {
+        tasks[downloadId]?.let { task ->
+            task.cancelled = false
+            task.failed = false
+            if (!task.tempFile.exists()) {
+                task.savedBytes = 0L
+            }
+            startTask(context.applicationContext, task)
+            return
+        }
+        if (downloadId < 0) return
+        runCatching {
+            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager ?: return@runCatching
+            DownloadManager::class.java
+                .getMethod("restartDownload", LongArray::class.java)
+                .invoke(dm, longArrayOf(downloadId))
+        }
+    }
+
+    private fun resolveDownloadUri(context: Context, item: DownloadItem): Pair<Uri, String>? {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val projection = arrayOf(MediaStore.Downloads._ID, MediaStore.Downloads.MIME_TYPE)
+            val selection = "${MediaStore.Downloads.DISPLAY_NAME} = ? AND ${MediaStore.Downloads.IS_PENDING} = 0"
+            runCatching {
+                resolver.query(collection, projection, selection, arrayOf(item.title), null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val id = cursor.getLong(0)
+                        val mime = cursor.getString(1)?.ifBlank { null }
+                            ?: mimeTypeFromFileName(item.title)
+                            ?: "*/*"
+                        return ContentUris.withAppendedId(collection, id) to mime
+                    }
+                }
+            }
+        }
+        if (item.downloadId >= 0) {
+            val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+            val uri = runCatching { manager?.getUriForDownloadedFile(item.downloadId) }.getOrNull()
+            if (uri != null) {
+                val mime = manager?.getMimeTypeForDownloadedFile(item.downloadId)?.ifBlank { null }
+                    ?: mimeTypeFromFileName(item.title)
+                    ?: "*/*"
+                return uri to mime
+            }
+        }
+        return null
+    }
+
+    fun openDownload(context: Context, item: DownloadItem) {
+        val (uri, mime) = resolveDownloadUri(context, item) ?: run {
+            locateDownload(context)
+            return
+        }
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, mime)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        runCatching {
+            context.startActivity(Intent.createChooser(intent, item.title))
+        }.onFailure {
+            locateDownload(context)
+        }
+    }
+
+    fun locateDownload(context: Context) {
+        val intent = Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)
+        runCatching { context.startActivity(intent) }.onFailure {
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_GET_CONTENT).apply { type = "*/*" })
+            }
+        }
+    }
+
+    fun shareDownload(context: Context, item: DownloadItem) {
+        val (uri, mime) = resolveDownloadUri(context, item) ?: return
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = mime
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        runCatching {
+            context.startActivity(Intent.createChooser(intent, item.title))
+        }
+    }
+
+    fun deleteHistoryOnly(context: Context, item: DownloadItem) {
+        tasks.remove(item.downloadId)
+        BrowserStore.removeDownload(context, item.title)
+        BrowserStore.hideDownload(context, item.title)
+    }
+
+    fun deleteWithStorage(context: Context, item: DownloadItem) {
+        tasks.remove(item.downloadId)?.let { task ->
+            runCatching { task.tempFile.delete() }
+        }
+        BrowserStore.removeDownload(context, item.title)
+        BrowserStore.hideDownload(context, item.title)
+        if (item.downloadId >= 0) {
+            runCatching {
+                (context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager)?.remove(item.downloadId)
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            runCatching {
+                resolver.delete(collection, "${MediaStore.Downloads.DISPLAY_NAME} = ?", arrayOf(item.title))
+            }
+        }
+        runCatching {
+            val file = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), item.title)
+            if (file.exists()) file.delete()
+        }
     }
 
     fun queryAll(context: Context): List<DownloadItem> {
-        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val flags = DownloadManager.STATUS_RUNNING or DownloadManager.STATUS_PENDING or
-            DownloadManager.STATUS_PAUSED or DownloadManager.STATUS_SUCCESSFUL or
-            DownloadManager.STATUS_FAILED
-        val cursor = runCatching {
-            manager.query(DownloadManager.Query().setFilterByStatus(flags))
-        }.getOrNull() ?: return emptyList()
-        val items = ArrayList<DownloadItem>(cursor.count.coerceAtLeast(0))
-        cursor.use {
-            val idCol = it.getColumnIndex(DownloadManager.COLUMN_ID)
-            val titleCol = it.getColumnIndex(DownloadManager.COLUMN_TITLE)
-            val uriCol = it.getColumnIndex(DownloadManager.COLUMN_URI)
-            val statusCol = it.getColumnIndex(DownloadManager.COLUMN_STATUS)
-            val totalCol = it.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
-            val savedCol = it.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
-            val stampCol = it.getColumnIndex(DownloadManager.COLUMN_LAST_MODIFIED_TIMESTAMP)
-            while (it.moveToNext()) {
-                val status = it.getInt(statusCol)
-                val total = it.getLong(totalCol)
-                val saved = it.getLong(savedCol)
-                val failed = status == DownloadManager.STATUS_FAILED
-                val domain = runCatching { Uri.parse(it.getString(uriCol)).host }.getOrNull() ?: ""
-                val state = when (status) {
-                    DownloadManager.STATUS_SUCCESSFUL, DownloadManager.STATUS_FAILED -> DownloadState.COMPLETE
-                    DownloadManager.STATUS_PAUSED -> DownloadState.PAUSED
-                    else -> DownloadState.DOWNLOADING
+        val items = ArrayList<DownloadItem>()
+        val seenTitles = HashSet<String>()
+        tasks.values.forEach { task ->
+            seenTitles.add(task.fileName)
+            val total = task.totalBytes
+            val saved = task.savedBytes
+            val progress = if (total > 0L) (saved.toFloat() / total).coerceIn(0f, 1f) else 0f
+            val detail = when {
+                task.cancelled -> "Cancelled"
+                task.failed -> "Failed"
+                total > 0L -> "${formatSize(saved)} / ${formatSize(total)}"
+                saved > 0L -> formatSize(saved)
+                else -> "Starting"
+            }
+            items += DownloadItem(
+                title = task.fileName,
+                domain = task.domain,
+                detail = detail,
+                state = task.state,
+                progress = progress,
+                timestamp = task.timestamp,
+                downloadId = task.id,
+            )
+        }
+        val manager = context.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+        if (manager != null) {
+            val flags = DownloadManager.STATUS_RUNNING or DownloadManager.STATUS_PENDING or
+                DownloadManager.STATUS_PAUSED or DownloadManager.STATUS_SUCCESSFUL or
+                DownloadManager.STATUS_FAILED
+            runCatching {
+                manager.query(DownloadManager.Query().setFilterByStatus(flags))
+            }.getOrNull()?.use {
+                val idCol = it.getColumnIndex(DownloadManager.COLUMN_ID)
+                val titleCol = it.getColumnIndex(DownloadManager.COLUMN_TITLE)
+                val uriCol = it.getColumnIndex(DownloadManager.COLUMN_URI)
+                val statusCol = it.getColumnIndex(DownloadManager.COLUMN_STATUS)
+                val reasonCol = it.getColumnIndex(DownloadManager.COLUMN_REASON)
+                val totalCol = it.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES)
+                val savedCol = it.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR)
+                val stampCol = it.getColumnIndex(DownloadManager.COLUMN_LAST_MODIFIED_TIMESTAMP)
+                while (it.moveToNext()) {
+                    val status = it.getInt(statusCol)
+                    val reason = if (reasonCol >= 0) it.getInt(reasonCol) else 0
+                    val total = it.getLong(totalCol)
+                    val saved = it.getLong(savedCol)
+                    val failed = status == DownloadManager.STATUS_FAILED
+                    val title = it.getString(titleCol) ?: "download"
+                    val domain = runCatching { Uri.parse(it.getString(uriCol)).host }.getOrNull() ?: ""
+                    val state = when (status) {
+                        DownloadManager.STATUS_SUCCESSFUL, DownloadManager.STATUS_FAILED -> DownloadState.COMPLETE
+                        DownloadManager.STATUS_PAUSED -> DownloadState.PAUSED
+                        else -> DownloadState.DOWNLOADING
+                    }
+                    val detail = when {
+                        failed -> "Failed"
+                        status == DownloadManager.STATUS_PAUSED && reason == DownloadManager.PAUSED_WAITING_TO_RETRY -> "Waiting to retry"
+                        status == DownloadManager.STATUS_PAUSED && reason == DownloadManager.PAUSED_WAITING_FOR_NETWORK -> "Waiting for network"
+                        status == DownloadManager.STATUS_PAUSED && reason == DownloadManager.PAUSED_QUEUED_FOR_WIFI -> "Waiting for Wi-Fi"
+                        else -> formatSize(total)
+                    }
+                    seenTitles.add(title)
+                    items += DownloadItem(
+                        title = title,
+                        domain = domain,
+                        detail = detail,
+                        state = state,
+                        progress = if (total > 0) (saved.toFloat() / total).coerceIn(0f, 1f) else 0f,
+                        timestamp = it.getLong(stampCol),
+                        downloadId = it.getLong(idCol),
+                    )
                 }
-                items += DownloadItem(
-                    title = it.getString(titleCol) ?: "download",
-                    domain = domain,
-                    detail = if (failed) "Failed" else formatSize(total),
-                    state = state,
-                    progress = if (total > 0) (saved.toFloat() / total).coerceIn(0f, 1f) else 0f,
-                    timestamp = it.getLong(stampCol),
-                    downloadId = it.getLong(idCol),
-                )
             }
         }
-        return items.sortedByDescending { it.timestamp }
+        val missingLabel = context.getString(R.string.download_file_missing)
+        BrowserStore.loadDownloads(context).forEach { record ->
+            if (!seenTitles.add(record.title)) return@forEach
+            val exists = downloadExists(context, record.title)
+            val detail = when {
+                !exists -> missingLabel
+                record.sizeBytes > 0L -> formatSize(record.sizeBytes)
+                else -> ""
+            }
+            items += DownloadItem(
+                title = record.title,
+                domain = record.domain,
+                detail = detail,
+                state = DownloadState.COMPLETE,
+                progress = 1f,
+                timestamp = record.timestamp,
+                downloadId = -1L,
+            )
+        }
+        val hidden = BrowserStore.loadHiddenDownloads(context)
+        return items
+            .filter { it.state != DownloadState.COMPLETE || it.title !in hidden }
+            .sortedByDescending { it.timestamp }
     }
 
     fun guessExtension(mimeType: String?): String {

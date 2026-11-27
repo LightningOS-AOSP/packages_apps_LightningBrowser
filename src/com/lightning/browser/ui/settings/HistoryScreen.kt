@@ -19,6 +19,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -38,6 +39,7 @@ import com.lightning.browser.ui.theme.LightningTheme
 @Composable
 fun HistoryScreen(
     history: List<HistoryEntry>,
+    onOpen: (HistoryEntry) -> Unit,
     onDelete: (HistoryEntry) -> Unit,
     onClear: () -> Unit,
     onBack: () -> Unit,
@@ -74,8 +76,16 @@ fun HistoryScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     GroupedColumn(entries.size) { i, shape ->
-                        SwipeToDeleteBox(onDelete = { onDelete(entries[i]) }, shape = shape) {
-                            HistoryRow(entries[i], shape = shape, index = i)
+                        val entry = entries[i]
+                        key(entry) {
+                            SwipeToDeleteBox(onDelete = { onDelete(entry) }, shape = shape) {
+                                HistoryRow(
+                                    entry = entry,
+                                    onClick = { onOpen(entry) },
+                                    shape = shape,
+                                    index = i,
+                                )
+                            }
                         }
                     }
                     Spacer(Modifier.height(20.dp))
@@ -88,12 +98,14 @@ fun HistoryScreen(
 @Composable
 private fun HistoryRow(
     entry: HistoryEntry,
+    onClick: () -> Unit,
     shape: Shape = ExpressiveShapes.grouped(0, 1),
     index: Int = 0,
 ) {
     val colors = LightningTheme.colors
     val (container, onContainer) = colors.chipColors(entry.tone)
     Surface(
+        onClick = onClick,
         shape = shape,
         color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
