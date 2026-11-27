@@ -109,6 +109,7 @@ import com.lightning.browser.ui.settings.AboutScreen
 import com.lightning.browser.ui.settings.AppearanceScreen
 import com.lightning.browser.ui.settings.Bookmark
 import com.lightning.browser.ui.settings.BookmarksScreen
+import com.lightning.browser.ui.settings.BrowsingScreen
 import com.lightning.browser.ui.settings.DnsProvider
 import com.lightning.browser.ui.settings.DnsScreen
 import com.lightning.browser.ui.settings.DownloadsScreen
@@ -144,7 +145,7 @@ data class DuplicateTabWarning(
 )
 
 enum class LightningScreen {
-    HOME, TABS, SAVED_PAGES, RECENTLY_CLOSED, PRINT, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT, BOOKMARKS, HISTORY,
+    HOME, TABS, SAVED_PAGES, RECENTLY_CLOSED, PRINT, SETTINGS, APPEARANCE, BROWSING, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT, BOOKMARKS, HISTORY,
     SITE_PERMISSIONS, BROWSER, STARTUP
 }
 
@@ -188,6 +189,7 @@ fun LightningBrowserRoot(
     }
     var addressFocusSignal by remember { mutableStateOf(0) }
     var editStartedFromHome by remember { mutableStateOf(false) }
+    var clipboardPromptEnabled by remember { mutableStateOf(BrowserStore.loadClipboardPromptEnabled(context)) }
     var dismissedClipTimestamp by remember { mutableStateOf(BrowserStore.loadDismissedClipTimestamp(context)) }
     var clipboardHintPresent by remember { mutableStateOf(false) }
     var currentClipSig by remember { mutableStateOf(0L) }
@@ -201,6 +203,10 @@ fun LightningBrowserRoot(
     }
 
     fun refreshClipboardState(force: Boolean = false) {
+        if (!clipboardPromptEnabled) {
+            clipboardHintPresent = false
+            return
+        }
         val sig = ClipboardUrlHelper.clipSignature(context)
         if (!force && sig != 0L && sig == checkedClipSig) return
         currentClipSig = sig
@@ -217,8 +223,8 @@ fun LightningBrowserRoot(
         }
     }
 
-    LaunchedEffect(windowInfo.isWindowFocused) {
-        if (windowInfo.isWindowFocused) {
+    LaunchedEffect(windowInfo.isWindowFocused, clipboardPromptEnabled) {
+        if (windowInfo.isWindowFocused && clipboardPromptEnabled) {
             refreshClipboardState()
             if (ClipboardUrlHelper.isClassificationPending(context)) {
                 delay(200L)
@@ -227,9 +233,10 @@ fun LightningBrowserRoot(
         }
     }
 
-    DisposableEffect(clipboardLifecycleOwner, context) {
+    DisposableEffect(clipboardLifecycleOwner, context, clipboardPromptEnabled) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         val clipListener = ClipboardManager.OnPrimaryClipChangedListener {
+            if (!clipboardPromptEnabled) return@OnPrimaryClipChangedListener
             checkedClipSig = null
             val sig = ClipboardUrlHelper.clipSignature(context)
             if (windowInfo.isWindowFocused) {
@@ -243,7 +250,7 @@ fun LightningBrowserRoot(
             }
         }
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
+            if (event == Lifecycle.Event.ON_RESUME && clipboardPromptEnabled) {
                 refreshClipboardState()
             }
         }
@@ -255,7 +262,7 @@ fun LightningBrowserRoot(
         }
     }
 
-    val showClipboardBanner = clipboardHintPresent && currentClipSig != dismissedClipTimestamp
+    val showClipboardBanner = clipboardPromptEnabled && clipboardHintPresent && currentClipSig != dismissedClipTimestamp
 
     LaunchedEffect(showClipboardBanner, currentClipSig) {
         if (showClipboardBanner) {
@@ -305,6 +312,12 @@ fun LightningBrowserRoot(
     var adBlocking by remember { mutableStateOf(BrowserStore.loadAdBlocking(context)) }
     var fingerprintLock by remember { mutableStateOf(BrowserStore.loadFingerprintLock(context)) }
     var hapticsEnabled by remember { mutableStateOf(BrowserStore.loadHapticFeedback(context)) }
+    var quickArcEnabled by remember { mutableStateOf(BrowserStore.loadQuickArcEnabled(context)) }
+    var tabPreviewsEnabled by remember { mutableStateOf(BrowserStore.loadTabPreviewsEnabled(context)) }
+    var readingTimeEnabled by remember { mutableStateOf(BrowserStore.loadReadingTimeEnabled(context)) }
+    var waybackEnabled by remember { mutableStateOf(BrowserStore.loadWaybackEnabled(context)) }
+    var duplicateTabWarningEnabled by remember { mutableStateOf(BrowserStore.loadDuplicateTabWarningEnabled(context)) }
+    var recentlyClosedEnabled by remember { mutableStateOf(BrowserStore.loadRecentlyClosedEnabled(context)) }
     var blockedCount by remember { mutableIntStateOf(0) }
     var dnsResolvedCount by remember { mutableIntStateOf(0) }
 
@@ -430,8 +443,34 @@ fun LightningBrowserRoot(
     LaunchedEffect(hapticsEnabled) {
         if (!incognito) BrowserStore.saveHapticFeedback(context, hapticsEnabled)
     }
+    LaunchedEffect(quickArcEnabled) {
+        if (!incognito) BrowserStore.saveQuickArcEnabled(context, quickArcEnabled)
+        if (!quickArcEnabled) showQuickArc = false
+    }
+    LaunchedEffect(tabPreviewsEnabled) {
+        if (!incognito) BrowserStore.saveTabPreviewsEnabled(context, tabPreviewsEnabled)
+        if (!tabPreviewsEnabled) tabThumbnails.clear()
+    }
+    LaunchedEffect(readingTimeEnabled) {
+        if (!incognito) BrowserStore.saveReadingTimeEnabled(context, readingTimeEnabled)
+    }
+    LaunchedEffect(clipboardPromptEnabled) {
+        if (!incognito) BrowserStore.saveClipboardPromptEnabled(context, clipboardPromptEnabled)
+        if (!clipboardPromptEnabled) clipboardHintPresent = false
+    }
+    LaunchedEffect(waybackEnabled) {
+        if (!incognito) BrowserStore.saveWaybackEnabled(context, waybackEnabled)
+    }
+    LaunchedEffect(duplicateTabWarningEnabled) {
+        if (!incognito) BrowserStore.saveDuplicateTabWarningEnabled(context, duplicateTabWarningEnabled)
+        if (!duplicateTabWarningEnabled) duplicateTabWarning = null
+    }
+    LaunchedEffect(recentlyClosedEnabled) {
+        if (!incognito) BrowserStore.saveRecentlyClosedEnabled(context, recentlyClosedEnabled)
+    }
 
     fun captureTabThumbnail(index: Int) {
+        if (!tabPreviewsEnabled) return
         val tab = tabs.getOrNull(index) ?: return
         if (tab.url.isEmpty()) return
         val wv = webViews[index] ?: return
@@ -722,6 +761,10 @@ fun LightningBrowserRoot(
     fun checkDuplicateTab(url: String, targetIndex: Int, createdTabId: String? = null) {
         val targetTab = tabs.getOrNull(targetIndex)
         val targetTabId = targetTab?.id.orEmpty()
+        if (!duplicateTabWarningEnabled) {
+            if (duplicateTabWarning?.forTabId == targetTabId) duplicateTabWarning = null
+            return
+        }
         val norm = normalizeTabUrl(url)
         if (norm.isEmpty()) {
             if (duplicateTabWarning?.forTabId == targetTabId) duplicateTabWarning = null
@@ -754,7 +797,7 @@ fun LightningBrowserRoot(
     }
 
     fun recordClosedTab(tab: BrowserTab) {
-        if (incognito || tab.private || tab.url.isBlank()) return
+        if (!recentlyClosedEnabled || incognito || tab.private || tab.url.isBlank()) return
         val now = System.currentTimeMillis()
         closedTabs.removeAll { it.url == tab.url || now - it.closedAt > BrowserStore.CLOSED_TAB_EXPIRY_MS }
         closedTabs.add(
@@ -1051,6 +1094,9 @@ fun LightningBrowserRoot(
                         onDismissClipboardBanner = { dismissClipboard(currentClipSig) },
                         onDismissClipSig = { dismissClipboard(it) },
                         onPrintRequest = { openPrintSheet() },
+                        readingTimeEnabled = readingTimeEnabled,
+                        clipboardPromptEnabled = clipboardPromptEnabled,
+                        waybackEnabled = waybackEnabled,
                         onBackHome = {
                             captureTabThumbnail(activeIndex)
                             screen = LightningScreen.HOME
@@ -1100,7 +1146,7 @@ fun LightningBrowserRoot(
                     )
                     LightningScreen.TABS -> TabSwitcherScreen(
                         tabs = tabs,
-                        thumbnails = tabThumbnails,
+                        thumbnails = if (tabPreviewsEnabled) tabThumbnails else emptyMap(),
                         onCloseTab = { index ->
                             if (index in tabs.indices) {
                                 val removed = tabs.removeAt(index)
@@ -1189,12 +1235,20 @@ fun LightningBrowserRoot(
                         themeMode = themeMode,
                         searchEngine = searchEngine,
                         onOpenStartup = { navigateTo(LightningScreen.STARTUP) },
+                        onOpenBrowsing = { navigateTo(LightningScreen.BROWSING) },
                         onOpenAppearance = { navigateTo(LightningScreen.APPEARANCE) },
                         onOpenPrivacy = { navigateTo(LightningScreen.PRIVACY) },
                         onOpenSearchEngine = { navigateTo(LightningScreen.SEARCH_ENGINE) },
                         onOpenDownloads = { navigateTo(LightningScreen.DOWNLOADS) },
                         onOpenAbout = { navigateTo(LightningScreen.ABOUT) },
                         onBack = { navigateBack(LightningScreen.HOME) },
+                    )
+                    LightningScreen.BROWSING -> BrowsingScreen(
+                        duplicateTabWarningEnabled = duplicateTabWarningEnabled,
+                        recentlyClosedEnabled = recentlyClosedEnabled,
+                        onDuplicateTabWarningChange = { duplicateTabWarningEnabled = it },
+                        onRecentlyClosedChange = { recentlyClosedEnabled = it },
+                        onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.STARTUP -> StartupScreen(
                         startupBehavior = startupBehavior,
@@ -1231,6 +1285,12 @@ fun LightningBrowserRoot(
                         onThemeModeSelect = { themeMode = it },
                         hapticsEnabled = hapticsEnabled,
                         onHapticsChange = { hapticsEnabled = it },
+                        quickArcEnabled = quickArcEnabled,
+                        onQuickArcChange = { quickArcEnabled = it },
+                        tabPreviewsEnabled = tabPreviewsEnabled,
+                        onTabPreviewsChange = { tabPreviewsEnabled = it },
+                        readingTimeEnabled = readingTimeEnabled,
+                        onReadingTimeChange = { readingTimeEnabled = it },
                         onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.DNS -> DnsScreen(
@@ -1248,8 +1308,12 @@ fun LightningBrowserRoot(
                         adBlocking = adBlocking,
                         blockedCount = blockedCount,
                         fingerprintLock = fingerprintLock,
+                        clipboardPromptEnabled = clipboardPromptEnabled,
+                        waybackEnabled = waybackEnabled,
                         onAdBlockingChange = { adBlocking = it },
                         onFingerprintChange = { fingerprintLock = it },
+                        onClipboardPromptChange = { clipboardPromptEnabled = it },
+                        onWaybackChange = { waybackEnabled = it },
                         onOpenDns = { navigateTo(LightningScreen.DNS) },
                         onOpenSitePermissions = { navigateTo(LightningScreen.SITE_PERMISSIONS) },
                         onClearData = { showClearData = true },
@@ -1300,7 +1364,7 @@ fun LightningBrowserRoot(
                                 }
                             }
                         },
-                        onLightningLongClick = { showQuickArc = true },
+                        onLightningLongClick = if (quickArcEnabled) ({ showQuickArc = true }) else null,
                         onBookmark = {
                             val tab = tabs.getOrNull(activeIndex)
                             if (screen == LightningScreen.BROWSER && tab != null &&
@@ -1365,6 +1429,7 @@ fun LightningBrowserRoot(
                 copyUrlVisible = screen == LightningScreen.BROWSER &&
                     tabs.getOrNull(activeIndex)?.url?.isNotEmpty() == true,
                 savedPagesVisible = screen == LightningScreen.TABS,
+                recentlyClosedVisible = screen == LightningScreen.TABS && recentlyClosedEnabled && !incognito,
                 onOpen = {
                     showMenu = false
                     navigateTo(it)

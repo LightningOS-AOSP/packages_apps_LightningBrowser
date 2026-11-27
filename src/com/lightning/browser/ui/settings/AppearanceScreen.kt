@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
+import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.theme.LightningMotion
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.ThemeMode
@@ -44,6 +45,12 @@ fun AppearanceScreen(
     onThemeModeSelect: (ThemeMode) -> Unit,
     hapticsEnabled: Boolean,
     onHapticsChange: (Boolean) -> Unit,
+    quickArcEnabled: Boolean,
+    onQuickArcChange: (Boolean) -> Unit,
+    tabPreviewsEnabled: Boolean,
+    onTabPreviewsChange: (Boolean) -> Unit,
+    readingTimeEnabled: Boolean,
+    onReadingTimeChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -60,12 +67,38 @@ fun AppearanceScreen(
         Spacer(Modifier.height(28.dp))
         ThemePreview(themeMode)
         Spacer(Modifier.height(20.dp))
-        SettingsSwitchRow(
-            title = stringResource(R.string.appearance_haptics),
-            summary = stringResource(R.string.appearance_haptics_summary),
-            checked = hapticsEnabled,
-            onCheckedChange = onHapticsChange,
-        )
+        GroupedColumn(4) { i, shape ->
+            when (i) {
+                0 -> SettingsSwitchRow(
+                    title = stringResource(R.string.appearance_haptics),
+                    summary = stringResource(R.string.appearance_haptics_summary),
+                    checked = hapticsEnabled,
+                    onCheckedChange = onHapticsChange,
+                    shape = shape,
+                )
+                1 -> SettingsSwitchRow(
+                    title = stringResource(R.string.appearance_quick_arc),
+                    summary = stringResource(R.string.appearance_quick_arc_summary),
+                    checked = quickArcEnabled,
+                    onCheckedChange = onQuickArcChange,
+                    shape = shape,
+                )
+                2 -> SettingsSwitchRow(
+                    title = stringResource(R.string.appearance_tab_previews),
+                    summary = stringResource(R.string.appearance_tab_previews_summary),
+                    checked = tabPreviewsEnabled,
+                    onCheckedChange = onTabPreviewsChange,
+                    shape = shape,
+                )
+                else -> SettingsSwitchRow(
+                    title = stringResource(R.string.appearance_reading_time),
+                    summary = stringResource(R.string.appearance_reading_time_summary),
+                    checked = readingTimeEnabled,
+                    onCheckedChange = onReadingTimeChange,
+                    shape = shape,
+                )
+            }
+        }
     }
 }
 

@@ -43,6 +43,13 @@ object BrowserStore {
     private const val KEY_DOWNLOADS = "browser_downloads"
     private const val KEY_DEFAULT_BROWSER_PROMPTED = "default_browser_prompted"
     private const val KEY_HAPTIC_FEEDBACK = "haptic_feedback"
+    private const val KEY_READING_TIME = "reading_time"
+    private const val KEY_QUICK_ARC = "quick_arc_menu"
+    private const val KEY_TAB_PREVIEWS = "tab_previews"
+    private const val KEY_CLIPBOARD_PROMPT = "clipboard_url_prompt"
+    private const val KEY_WAYBACK_FALLBACK = "wayback_fallback"
+    private const val KEY_DUPLICATE_TAB_WARNING = "duplicate_tab_warning"
+    private const val KEY_RECENTLY_CLOSED_ENABLED = "recently_closed_enabled"
     private const val KEY_DISMISSED_CLIP_TIMESTAMP = "dismissed_clip_timestamp"
     private const val KEY_CLOSED_TABS = "recently_closed_tabs"
     const val MAX_CLOSED_TABS = 10
@@ -231,6 +238,55 @@ object BrowserStore {
 
     fun saveHapticFeedback(context: Context, value: Boolean) {
         prefs(context).edit().putBoolean(KEY_HAPTIC_FEEDBACK, value).apply()
+    }
+
+    fun loadReadingTimeEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_READING_TIME, false)
+
+    fun saveReadingTimeEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_READING_TIME, value).apply()
+    }
+
+    fun loadQuickArcEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_QUICK_ARC, true)
+
+    fun saveQuickArcEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_QUICK_ARC, value).apply()
+    }
+
+    fun loadTabPreviewsEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_TAB_PREVIEWS, true)
+
+    fun saveTabPreviewsEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TAB_PREVIEWS, value).apply()
+    }
+
+    fun loadClipboardPromptEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CLIPBOARD_PROMPT, true)
+
+    fun saveClipboardPromptEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CLIPBOARD_PROMPT, value).apply()
+    }
+
+    fun loadWaybackEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_WAYBACK_FALLBACK, true)
+
+    fun saveWaybackEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_WAYBACK_FALLBACK, value).apply()
+    }
+
+    fun loadDuplicateTabWarningEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DUPLICATE_TAB_WARNING, true)
+
+    fun saveDuplicateTabWarningEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DUPLICATE_TAB_WARNING, value).apply()
+    }
+
+    fun loadRecentlyClosedEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_RECENTLY_CLOSED_ENABLED, true)
+
+    fun saveRecentlyClosedEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_RECENTLY_CLOSED_ENABLED, value).apply()
     }
 
     fun loadTabs(context: Context): List<BrowserTab> {

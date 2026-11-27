@@ -29,6 +29,7 @@ class WebConfig(
     var defaultUserAgent: String? = null
     var desktopMode: Boolean = tab.desktopMode
     var isActive: Boolean = true
+    var readingTimeEnabled: Boolean = false
     var fullscreen: FullscreenVideo? = null
     var onProgress: (Int) -> Unit = {}
     var onNavChange: (Boolean, Boolean) -> Unit = { _, _ -> }

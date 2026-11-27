@@ -34,7 +34,7 @@ fun LightningBottomBar(
     onBookmark: () -> Unit = {},
     onMenu: () -> Unit = {},
     onNewTab: () -> Unit = {},
-    onLightningLongClick: () -> Unit = {},
+    onLightningLongClick: (() -> Unit)? = null,
     backEnabled: Boolean = false,
     forwardEnabled: Boolean = false,
     bookmarked: Boolean = false,

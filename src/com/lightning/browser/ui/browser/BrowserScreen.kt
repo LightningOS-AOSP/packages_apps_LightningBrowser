@@ -245,6 +245,9 @@ fun BrowserScreen(
     onDismissClipboardBanner: () -> Unit = {},
     onDismissClipSig: (Long) -> Unit = {},
     onPrintRequest: () -> Unit = {},
+    readingTimeEnabled: Boolean = false,
+    clipboardPromptEnabled: Boolean = true,
+    waybackEnabled: Boolean = true,
     onBackHome: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -277,8 +280,20 @@ fun BrowserScreen(
         }
     }
 
-    LaunchedEffect(isEditing, activeIndex, dismissedClipTimestamp) {
-        if (isEditing) {
+    LaunchedEffect(readingTimeEnabled) {
+        if (!readingTimeEnabled) {
+            readingTimes.clear()
+        }
+    }
+
+    LaunchedEffect(waybackEnabled) {
+        if (!waybackEnabled) {
+            waybackSnapshot = null
+        }
+    }
+
+    LaunchedEffect(isEditing, activeIndex, dismissedClipTimestamp, clipboardPromptEnabled) {
+        if (isEditing && clipboardPromptEnabled) {
             val sig = ClipboardUrlHelper.clipSignature(context)
             if (sig == dismissedClipTimestamp) {
                 clipboardUrl = null
@@ -462,7 +477,7 @@ fun BrowserScreen(
                 }
             },
             onRefresh = { webViews[activeIndex]?.reload() },
-            readingMinutes = activeTab?.id?.let { readingTimes[it]?.minutes },
+            readingMinutes = if (readingTimeEnabled) activeTab?.id?.let { readingTimes[it]?.minutes } else null,
         )
         }
         }
@@ -537,6 +552,7 @@ fun BrowserScreen(
                             adBlocking = adBlocking,
                             dnsEndpoint = dnsEndpoint,
                             bypassTrusted = bypassTrusted,
+                            readingTimeEnabled = readingTimeEnabled,
                             webViews = webViews,
                             loadedUrls = loadedUrls,
                             onProgress = { progress[idx] = it },
@@ -611,9 +627,9 @@ fun BrowserScreen(
                             onDnsResolved = onDnsResolved,
                             onPrintRequest = onPrintRequest,
                             onHttpError = { failedUrl, statusCode ->
-                                if (isActive && statusCode in listOf(404, 410, 502, 504)) {
+                                if (waybackEnabled && isActive && statusCode in listOf(404, 410, 502, 504)) {
                                     WaybackResolver.checkAvailability(failedUrl) { result ->
-                                        if (result != null && (activeTab?.url == failedUrl || loadedUrls[idx] == failedUrl)) {
+                                        if (waybackEnabled && result != null && (activeTab?.url == failedUrl || loadedUrls[idx] == failedUrl)) {
                                             waybackSnapshot = result
                                         }
                                     }
@@ -1494,6 +1510,7 @@ private fun BrowserPage(
     adBlocking: Boolean,
     dnsEndpoint: String?,
     bypassTrusted: Boolean,
+    readingTimeEnabled: Boolean,
     webViews: SnapshotStateMap<Int, WebView>,
     loadedUrls: SnapshotStateMap<Int, String>,
     onProgress: (Int) -> Unit,
@@ -1523,6 +1540,7 @@ private fun BrowserPage(
                 )
                 val config = WebConfig(tab, adBlocking, dnsEndpoint, bypassTrusted).apply {
                     this.isActive = isActive
+                    this.readingTimeEnabled = readingTimeEnabled
                 }
                 tag = config
                 setOnTouchListener { _, _ -> !config.isActive }
@@ -1615,6 +1633,26 @@ private fun BrowserPage(
                     }
                 }
                 webViewClient = object : WebViewClient() {
+                    private var lastReadingTimeUrl: String? = null
+
+                    private fun scheduleReadingTime(view: WebView?, pageUrl: String?) {
+                        if (!config.readingTimeEnabled || view == null || pageUrl == null) return
+                        fun measure(retry: Boolean) {
+                            if (!config.readingTimeEnabled || view.url != pageUrl) return
+                            view.evaluateJavascript(ReadingTimeEstimator.SCRIPT) { raw ->
+                                if (!config.readingTimeEnabled || view.url != pageUrl) return@evaluateJavascript
+                                val estimate = ReadingTimeEstimator.parse(raw)
+                                if (estimate != null) {
+                                    config.onReadingTime(estimate)
+                                } else if (retry) {
+                                    // Give SPAs and lazy-loaded articles one more chance.
+                                    view.postDelayed({ measure(false) }, 1_800L)
+                                }
+                            }
+                        }
+                        view.postDelayed({ measure(true) }, 700L)
+                    }
+
                     override fun shouldInterceptRequest(
                         view: WebView?,
                         request: WebResourceRequest?,
@@ -1715,6 +1753,7 @@ private fun BrowserPage(
 
                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                         super.onPageStarted(view, url, favicon)
+                        lastReadingTimeUrl = url
                         config.onReadingTime(null)
                         url?.let { config.onUrlChange(it) }
                         config.onNavChange(view?.canGoBack() ?: false, view?.canGoForward() ?: false)
@@ -1755,27 +1794,17 @@ private fun BrowserPage(
                         url?.let { config.onUrlChange(it) }
                         config.onNavChange(view?.canGoBack() ?: false, view?.canGoForward() ?: false)
                         view?.post { config.onNavChange(view.canGoBack(), view.canGoForward()) }
+                        if (!isReload && url != null && url != lastReadingTimeUrl) {
+                            lastReadingTimeUrl = url
+                            config.onReadingTime(null)
+                            scheduleReadingTime(view, url)
+                        }
                     }
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
-                        val pageUrl = url
-                        if (view != null && pageUrl != null) {
-                            fun measure(retry: Boolean) {
-                                if (view.url != pageUrl) return
-                                view.evaluateJavascript(ReadingTimeEstimator.SCRIPT) { raw ->
-                                    if (view.url != pageUrl) return@evaluateJavascript
-                                    val estimate = ReadingTimeEstimator.parse(raw)
-                                    if (estimate != null) {
-                                        config.onReadingTime(estimate)
-                                    } else if (retry) {
-                                        // Give SPAs and lazy-loaded articles one more chance.
-                                        view.postDelayed({ measure(false) }, 1_800L)
-                                    }
-                                }
-                            }
-                            view.postDelayed({ measure(true) }, 700L)
-                        }
+                        lastReadingTimeUrl = url
+                        scheduleReadingTime(view, url)
                         if (config.desktopMode && view != null) {
                             view.evaluateJavascript(desktopViewportScript(view), null)
                         }
@@ -1827,6 +1856,7 @@ private fun BrowserPage(
                 config.adBlocking = adBlocking
                 config.dnsEndpoint = dnsEndpoint
                 config.bypassTrusted = bypassTrusted
+                config.readingTimeEnabled = readingTimeEnabled
                 config.onProgress = onProgress
                 config.onReadingTime = onReadingTime
                 config.onNavChange = onNavChange

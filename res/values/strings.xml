@@ -98,6 +98,8 @@
     <string name="settings_privacy_security">Privacy and security</string>
     <string name="settings_privacy_summary">Ad blocking, private DNS</string>
     <string name="settings_appearance">Appearance</string>
+    <string name="settings_browsing">Tabs and browsing</string>
+    <string name="settings_browsing_summary">Duplicate warnings, recently closed tabs</string>
     <string name="settings_search_engine">Search engine</string>
     <string name="settings_search_engine_summary">Default search provider</string>
     <string name="settings_downloads">Downloads</string>
@@ -253,6 +255,23 @@
 
     <string name="appearance_haptics">Haptic feedback</string>
     <string name="appearance_haptics_summary">Tactile feedback for taps, toggles and gestures</string>
+    <string name="appearance_quick_arc">Quick Arc menu</string>
+    <string name="appearance_quick_arc_summary">Long-press the Lightning button for quick shortcuts</string>
+    <string name="appearance_tab_previews">Live tab previews</string>
+    <string name="appearance_tab_previews_summary">Show page thumbnails on cards in All tabs</string>
+    <string name="appearance_reading_time">Reading time estimate</string>
+    <string name="appearance_reading_time_summary">Show approximate reading time on article pages</string>
+
+    <string name="browsing_title">Tabs and browsing</string>
+    <string name="browsing_duplicate_warning">Duplicate tab warning</string>
+    <string name="browsing_duplicate_warning_summary">Warn when opening a URL already open in another tab</string>
+    <string name="browsing_recently_closed">Recently closed tabs</string>
+    <string name="browsing_recently_closed_summary">Keep closed tabs for 24 hours so you can reopen them</string>
+
+    <string name="privacy_clipboard_prompt">Clipboard link prompt</string>
+    <string name="privacy_clipboard_prompt_summary">Offer to open or paste links copied to your clipboard</string>
+    <string name="privacy_wayback_fallback">Wayback Machine fallback</string>
+    <string name="privacy_wayback_fallback_summary">Check archive.org for snapshots when a page fails to load</string>
 
     <string name="clipboard_url_title">Link you copied</string>
     <string name="clipboard_url_home_subtitle">Open in new tab</string>

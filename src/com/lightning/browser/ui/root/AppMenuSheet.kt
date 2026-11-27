@@ -66,6 +66,7 @@ fun AppMenuSheet(
     incognito: Boolean = false,
     copyUrlVisible: Boolean = false,
     savedPagesVisible: Boolean = false,
+    recentlyClosedVisible: Boolean = false,
 ) {
     if (visible) {
         val sheetState = rememberModalBottomSheetState()
@@ -138,11 +139,13 @@ fun AppMenuSheet(
                             onOpen(LightningScreen.SAVED_PAGES)
                         },
                     )
-                    add(
-                        MenuAction(Icons.Filled.History, stringResource(R.string.tabs_recently_closed_header)) {
-                            onOpen(LightningScreen.RECENTLY_CLOSED)
-                        },
-                    )
+                    if (recentlyClosedVisible) {
+                        add(
+                            MenuAction(Icons.Filled.History, stringResource(R.string.tabs_recently_closed_header)) {
+                                onOpen(LightningScreen.RECENTLY_CLOSED)
+                            },
+                        )
+                    }
                 }
                 add(
                     MenuAction(Icons.Filled.Bookmark, stringResource(R.string.bookmarks_title)) {
