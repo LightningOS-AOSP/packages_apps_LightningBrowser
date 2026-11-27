@@ -1,16 +1,23 @@
 package com.lightning.browser.ui.root
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.History
@@ -19,13 +26,16 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -45,6 +55,8 @@ fun AppMenuSheet(
     onReload: () -> Unit = {},
     onShare: () -> Unit = {},
     onFindInPage: () -> Unit = {},
+    onToggleDesktop: () -> Unit = {},
+    desktopMode: Boolean = false,
     onIncognito: () -> Unit = {},
     incognito: Boolean = false,
     copyUrlVisible: Boolean = false,
@@ -80,6 +92,16 @@ fun AppMenuSheet(
                     add(
                         MenuAction(Icons.Filled.FindInPage, stringResource(R.string.menu_find_in_page)) {
                             onFindInPage()
+                            onHide()
+                        },
+                    )
+                    add(
+                        MenuAction(
+                            icon = Icons.Filled.DesktopWindows,
+                            title = stringResource(R.string.menu_desktop_site),
+                            active = desktopMode,
+                        ) {
+                            onToggleDesktop()
                             onHide()
                         },
                     )
@@ -142,6 +164,7 @@ fun AppMenuSheet(
 private data class MenuAction(
     val icon: ImageVector,
     val title: String,
+    val active: Boolean = false,
     val onClick: () -> Unit,
 )
 
@@ -153,20 +176,43 @@ private fun ActionTile(action: MenuAction, index: Int, modifier: Modifier = Modi
         onClick = action.onClick,
         shape = ExpressiveShapes.diagonal(index, 32, 10),
         color = tone.container,
+        border = if (action.active) BorderStroke(1.5.dp, tone.content) else null,
         modifier = modifier.height(88.dp),
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
-            ShapedIcon(
-                action.icon,
-                ExpressiveShapes.cycle(index),
-                colors.surface.copy(alpha = 0.6f),
-                tone.content,
-                size = 40.dp,
-                iconSize = 20.dp,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                ShapedIcon(
+                    action.icon,
+                    ExpressiveShapes.cycle(index),
+                    colors.surface.copy(alpha = 0.6f),
+                    tone.content,
+                    size = 40.dp,
+                    iconSize = 20.dp,
+                )
+                if (action.active) {
+                    Box(
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .background(tone.content),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = null,
+                            tint = tone.container,
+                            modifier = Modifier.size(13.dp),
+                        )
+                    }
+                }
+            }
             Text(
                 text = action.title,
                 style = MaterialTheme.typography.labelLarge,

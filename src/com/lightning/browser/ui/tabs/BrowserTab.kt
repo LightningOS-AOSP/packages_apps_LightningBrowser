@@ -7,5 +7,6 @@ data class BrowserTab(
     val domain: String,
     val url: String = "",
     val private: Boolean = false,
+    val desktopMode: Boolean = false,
     val id: String = UUID.randomUUID().toString(),
 )

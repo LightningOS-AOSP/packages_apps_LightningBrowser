@@ -239,11 +239,13 @@ object BrowserStore {
                     val domain = entry.optString("domain", "")
                     val title = entry.optString("title", if (url.isEmpty()) "New tab" else domain)
                     val id = entry.optString("id", "").ifEmpty { UUID.randomUUID().toString() }
+                    val desktopMode = entry.optBoolean("desktopMode", false)
                     add(BrowserTab(
                         title = title.ifEmpty { if (url.isEmpty()) "New tab" else domain },
                         domain = domain,
                         url = url,
                         private = false,
+                        desktopMode = desktopMode,
                         id = id,
                     ))
                 }
@@ -259,6 +261,7 @@ object BrowserStore {
                 .put("title", tab.title)
                 .put("domain", tab.domain)
                 .put("url", tab.url)
+                .put("desktopMode", tab.desktopMode)
                 .put("id", tab.id))
         }
         prefs(context)

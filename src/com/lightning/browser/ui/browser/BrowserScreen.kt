@@ -124,6 +124,66 @@ import java.io.File
 
 private const val CHROME_SCROLL_THRESHOLD = 48
 private const val CHROME_SETTLE_MS = 400L
+private const val DESKTOP_USER_AGENT =
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+private fun desktopScale(webView: WebView): Float {
+    val density = webView.resources.displayMetrics.density.coerceAtLeast(1f)
+    val widthPx = if (webView.width > 0) webView.width else webView.resources.displayMetrics.widthPixels
+    val viewDp = (widthPx / density).takeIf { it > 0f } ?: 390f
+    return (viewDp / 1280f).coerceIn(0.2f, 1f)
+}
+
+private fun desktopViewportScript(webView: WebView): String {
+    val formattedScale = String.format(java.util.Locale.US, "%.3f", desktopScale(webView))
+    return """
+        (function() {
+            var targetContent = 'width=1280, initial-scale=$formattedScale';
+            function enforce() {
+                var metas = document.querySelectorAll('meta[name="viewport"]');
+                for (var i = 1; i < metas.length; i++) {
+                    metas[i].remove();
+                }
+                var meta = metas[0];
+                if (!meta) {
+                    meta = document.createElement('meta');
+                    meta.name = 'viewport';
+                    var target = document.head || document.documentElement;
+                    if (target) target.appendChild(meta);
+                }
+                if (meta && meta.getAttribute('content') !== targetContent) {
+                    meta.setAttribute('content', targetContent);
+                }
+            }
+            enforce();
+            if (!window._lightningViewportObserver && typeof MutationObserver !== 'undefined') {
+                var root = document.head || document.documentElement;
+                if (root) {
+                    window._lightningViewportObserver = new MutationObserver(enforce);
+                    window._lightningViewportObserver.observe(root, {
+                        childList: true,
+                        subtree: true,
+                        attributes: true,
+                        attributeFilter: ['content']
+                    });
+                }
+            }
+        })();
+    """.trimIndent()
+}
+
+private fun applyDesktopMode(webView: WebView, config: WebConfig, enabled: Boolean) {
+    val ua = if (enabled) DESKTOP_USER_AGENT else config.defaultUserAgent
+    if (ua != null) {
+        webView.settings.userAgentString = ua
+    }
+    webView.settings.useWideViewPort = enabled
+    webView.settings.loadWithOverviewMode = enabled
+    webView.settings.builtInZoomControls = true
+    webView.settings.displayZoomControls = false
+    webView.setInitialScale(if (enabled) (desktopScale(webView) * 100f).toInt().coerceIn(20, 100) else 0)
+    config.userAgent = webView.settings.userAgentString
+    config.desktopMode = enabled
+}
 
 data class TabNavState(val canGoBack: Boolean = false, val canGoForward: Boolean = false)
 
@@ -385,13 +445,15 @@ fun BrowserScreen(
                     onUrlChange = { url ->
                         if (url.isNotBlank() && url != "about:blank") {
                             loadedUrls[activeIndex] = url
-                            onUpdateTab(activeIndex, activeTab.copy(url = url, domain = hostOf(url)))
+                            val current = tabs.getOrNull(activeIndex) ?: activeTab
+                            onUpdateTab(activeIndex, current.copy(url = url, domain = hostOf(url)))
                         }
                     },
                     onPageMeta = { title, domain, url ->
                         loadedUrls[activeIndex] = url
-                        onUpdateTab(activeIndex, activeTab.copy(title = title, domain = domain, url = url))
-                        if (!activeTab.private) onRecordVisit(title, domain)
+                        val current = tabs.getOrNull(activeIndex) ?: activeTab
+                        onUpdateTab(activeIndex, current.copy(title = title, domain = domain, url = url))
+                        if (!current.private) onRecordVisit(title, domain)
                     },
                     onDownload = ::startDownload,
                     onDownloadStart = ::showDownloadStarted,
@@ -1089,7 +1151,8 @@ private fun BrowserPage(
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
                 }
                 setBackgroundColor(colors.surface.toArgb())
-                config.userAgent = settings.userAgentString
+                config.defaultUserAgent = settings.userAgentString
+                applyDesktopMode(this, config, tab.desktopMode)
                 val fullscreen = FullscreenVideo(context)
                 config.fullscreen = fullscreen
                 addJavascriptInterface(
@@ -1255,8 +1318,18 @@ private fun BrowserPage(
                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                         super.onPageStarted(view, url, favicon)
                         url?.let { config.onUrlChange(it) }
+                        if (config.desktopMode && view != null) {
+                            view.evaluateJavascript(desktopViewportScript(view), null)
+                        }
                         view?.evaluateJavascript(DOWNLOAD_INTERCEPT_SCRIPT, null)
                         if (config.adBlocking) view?.evaluateJavascript(CosmeticFilter.SCRIPT, null)
+                    }
+
+                    override fun onPageCommitVisible(view: WebView?, url: String?) {
+                        super.onPageCommitVisible(view, url)
+                        if (config.desktopMode && view != null) {
+                            view.evaluateJavascript(desktopViewportScript(view), null)
+                        }
                     }
 
                     override fun onReceivedHttpError(
@@ -1278,6 +1351,9 @@ private fun BrowserPage(
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
+                        if (config.desktopMode && view != null) {
+                            view.evaluateJavascript(desktopViewportScript(view), null)
+                        }
                         view?.evaluateJavascript(DOWNLOAD_INTERCEPT_SCRIPT, null)
                         if (config.adBlocking) view?.evaluateJavascript(CosmeticFilter.SCRIPT, null)
                         val current = config.tab
@@ -1302,6 +1378,7 @@ private fun BrowserPage(
         },
         update = { wv ->
             (wv.tag as? WebConfig)?.let { config ->
+                val desktopChanged = config.desktopMode != tab.desktopMode
                 config.tab = tab
                 config.adBlocking = adBlocking
                 config.dnsEndpoint = dnsEndpoint
@@ -1318,6 +1395,12 @@ private fun BrowserPage(
                 config.onBlocked = onBlocked
                 config.onDnsResolved = onDnsResolved
                 config.onHttpError = onHttpError
+                if (desktopChanged) {
+                    applyDesktopMode(wv, config, tab.desktopMode)
+                    if (tab.url.isNotEmpty()) {
+                        wv.reload()
+                    }
+                }
             }
             wv.onResume()
             onNavChange(wv.canGoBack(), wv.canGoForward())

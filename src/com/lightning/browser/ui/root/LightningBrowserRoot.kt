@@ -794,6 +794,13 @@ fun LightningBrowserRoot(
                 onReload = { webViews[activeIndex]?.reload() },
                 onShare = { shareUrl() },
                 onFindInPage = { findInPageSignal++ },
+                desktopMode = tabs.getOrNull(activeIndex)?.desktopMode == true,
+                onToggleDesktop = {
+                    val tab = tabs.getOrNull(activeIndex)
+                    if (tab != null) {
+                        tabs[activeIndex] = tab.copy(desktopMode = !tab.desktopMode)
+                    }
+                },
                 onIncognito = { context.startActivity(Intent(context, IncognitoActivity::class.java)) },
                 incognito = incognito,
                 copyUrlVisible = screen == LightningScreen.BROWSER &&
