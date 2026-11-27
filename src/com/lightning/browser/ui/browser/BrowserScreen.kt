@@ -62,6 +62,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.NorthWest
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -119,6 +120,7 @@ import com.lightning.browser.ui.theme.rememberLightningHaptics
 import com.lightning.browser.ui.components.TonalIconButton
 import com.lightning.browser.ui.home.ChipTone
 import com.lightning.browser.ui.home.RecentPage
+import com.lightning.browser.ui.root.DuplicateTabWarning
 import com.lightning.browser.ui.settings.Bookmark
 import com.lightning.browser.ui.settings.DnsProvider
 import com.lightning.browser.ui.settings.SearchEngine
@@ -227,6 +229,10 @@ fun BrowserScreen(
     onSearchSubmitted: (String) -> Unit = {},
     onOpenDownloads: () -> Unit = {},
     onOpenInNewTab: (String) -> Unit = {},
+    duplicateTabWarning: DuplicateTabWarning? = null,
+    onCheckDuplicateTab: (String) -> Unit = {},
+    onSwitchDuplicateTab: () -> Unit = {},
+    onDismissDuplicateTab: () -> Unit = {},
     showClipboardBanner: Boolean = false,
     dismissedClipTimestamp: Long? = null,
     onOpenClipboardBanner: () -> Unit = {},
@@ -442,6 +448,7 @@ fun BrowserScreen(
                     val url = toUrl(text, searchEngine)
                     onUpdateTab(activeIndex, tabs[activeIndex].copy(url = url, domain = hostOf(url)))
                     if (url == searchEngine.searchUrl(text)) onSearchSubmitted(text)
+                    onCheckDuplicateTab(url)
                     onClearEditFromHome()
                     editing = false
                     keyboard?.hide()
@@ -502,11 +509,15 @@ fun BrowserScreen(
                     },
                     onUrlChange = { url ->
                         if (url.isNotBlank() && url != "about:blank") {
+                            val prev = loadedUrls[activeIndex]
                             loadedUrls[activeIndex] = url
                             val current = tabs.getOrNull(activeIndex) ?: activeTab
                             val isLocal = url.startsWith("content://") || url.startsWith("file://")
                             val domain = if (isLocal) current.domain else hostOf(url)
                             onUpdateTab(activeIndex, current.copy(url = url, domain = domain))
+                            if (!isLocal && prev != url) {
+                                onCheckDuplicateTab(url)
+                            }
                         }
                     },
                     onPageMeta = { title, domain, url ->
@@ -569,6 +580,7 @@ fun BrowserScreen(
                             val url = searchEngine.searchUrl(term)
                             onUpdateTab(activeIndex, tabs[activeIndex].copy(url = url, domain = hostOf(url)))
                             onSearchSubmitted(term)
+                            onCheckDuplicateTab(url)
                         }
                         onClearEditFromHome()
                         editing = false
@@ -578,6 +590,7 @@ fun BrowserScreen(
                         if (tabs.isNotEmpty()) {
                             val url = "https://$domain"
                             onUpdateTab(activeIndex, tabs[activeIndex].copy(url = url, domain = domain))
+                            onCheckDuplicateTab(url)
                         }
                         onClearEditFromHome()
                         editing = false
@@ -589,7 +602,23 @@ fun BrowserScreen(
                 LightningLoadingIndicator(Modifier.fillMaxSize())
             }
             androidx.compose.animation.AnimatedVisibility(
-                visible = showClipboardBanner && !isEditing && !finding && waybackSnapshot == null && downloadPopup == null,
+                visible = duplicateTabWarning != null && !isEditing && !finding && waybackSnapshot == null && downloadPopup == null,
+                enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
+                exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(180)),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+            ) {
+                duplicateTabWarning?.let { warning ->
+                    DuplicateTabBanner(
+                        title = warning.title,
+                        onSwitch = onSwitchDuplicateTab,
+                        onDismiss = onDismissDuplicateTab,
+                    )
+                }
+            }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showClipboardBanner && duplicateTabWarning == null && !isEditing && !finding && waybackSnapshot == null && downloadPopup == null,
                 enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
                 exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(180)),
                 modifier = Modifier
@@ -699,6 +728,90 @@ fun BrowserScreen(
                 duplicateDownload = null
             },
         )
+    }
+}
+
+@Composable
+private fun DuplicateTabBanner(
+    title: String,
+    onSwitch: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
+    Surface(
+        onClick = {
+            haptics.confirm()
+            onSwitch()
+        },
+        shape = RoundedCornerShape(28.dp),
+        color = colors.surfaceContainerHigh,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            ShapedIcon(
+                icon = Icons.Filled.Tab,
+                shape = ExpressiveShapes.Cookie9,
+                container = colors.secondaryContainer,
+                content = colors.onSecondaryContainer,
+                size = 44.dp,
+                iconSize = 22.dp,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.duplicate_tab_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            Button(
+                onClick = {
+                    haptics.confirm()
+                    onSwitch()
+                },
+                shape = CircleShape,
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.primary,
+                    contentColor = colors.onPrimary,
+                ),
+                modifier = Modifier.height(36.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.duplicate_tab_switch),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.clipboard_url_dismiss),
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
     }
 }
 

@@ -130,6 +130,14 @@ import com.lightning.browser.ui.theme.ThemeMode
 import com.lightning.browser.ui.theme.rememberLightningHaptics
 import kotlinx.coroutines.flow.distinctUntilChanged
 
+data class DuplicateTabWarning(
+    val existingIndex: Int,
+    val existingTabId: String,
+    val title: String,
+    val normalizedUrl: String,
+    val createdTabId: String? = null,
+)
+
 enum class LightningScreen {
     HOME, TABS, SAVED_PAGES, PRINT, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT, BOOKMARKS, HISTORY,
     SITE_PERMISSIONS, BROWSER, STARTUP
@@ -332,6 +340,17 @@ fun LightningBrowserRoot(
     var showClearData by remember { mutableStateOf(false) }
     var showAddPinned by remember { mutableStateOf(false) }
     var pinnedDraft by remember { mutableStateOf("") }
+    var duplicateTabWarning by remember { mutableStateOf<DuplicateTabWarning?>(null) }
+    val suppressedDuplicateUrls = remember { HashSet<String>() }
+
+    LaunchedEffect(duplicateTabWarning) {
+        val current = duplicateTabWarning ?: return@LaunchedEffect
+        delay(6_000L)
+        if (duplicateTabWarning == current) {
+            suppressedDuplicateUrls.add(current.normalizedUrl)
+            duplicateTabWarning = null
+        }
+    }
     var showDefaultBrowserPrompt by remember {
         mutableStateOf(
             if (!incognito && !BrowserStore.hasPromptedDefaultBrowser(context)) {
@@ -616,16 +635,73 @@ fun LightningBrowserRoot(
         .take(3)
         .map { RecentPage(it.title, it.domain, it.icon, it.tone) }
 
+    fun normalizeTabUrl(raw: String): String {
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty() || trimmed == "about:blank") return ""
+        return runCatching {
+            val uri = android.net.Uri.parse(trimmed)
+            val scheme = uri.scheme?.lowercase().orEmpty()
+            val host = uri.host?.lowercase()?.removePrefix("www.").orEmpty()
+            val path = uri.path.orEmpty().let { if (it == "/") "" else it.trimEnd('/') }
+            val query = uri.encodedQuery?.let { "?$it" }.orEmpty()
+            if (scheme.isNotEmpty() && host.isNotEmpty()) {
+                "$scheme://$host$path$query"
+            } else {
+                trimmed.trimEnd('/').lowercase()
+            }
+        }.getOrDefault(trimmed.trimEnd('/').lowercase())
+    }
+
+    fun checkDuplicateTab(url: String, targetIndex: Int, createdTabId: String? = null) {
+        val norm = normalizeTabUrl(url)
+        if (norm.isEmpty() || norm in suppressedDuplicateUrls) return
+        val targetPrivate = tabs.getOrNull(targetIndex)?.private ?: incognito
+        val match = tabs.withIndex().firstOrNull { (i, tab) ->
+            i != targetIndex && tab.private == targetPrivate && normalizeTabUrl(tab.url) == norm
+        }
+        if (match != null) {
+            duplicateTabWarning = DuplicateTabWarning(
+                existingIndex = match.index,
+                existingTabId = match.value.id,
+                title = match.value.title.ifBlank { match.value.domain.ifBlank { url } },
+                normalizedUrl = norm,
+                createdTabId = createdTabId,
+            )
+        }
+    }
+
+    fun removeTabAt(index: Int) {
+        if (index !in tabs.indices) return
+        val removed = tabs.removeAt(index)
+        tabThumbnails.remove(removed.id)
+        if (!incognito && !removed.private) {
+            BrowserStore.deleteTabThumbnail(context, removed.id)
+        }
+        webViews.remove(index)?.destroy()
+        navStates.remove(index)
+        loadedUrls.remove(index)
+        for (i in index until tabs.size) {
+            webViews.remove(i + 1)?.let { webViews[i] = it }
+            navStates.remove(i + 1)?.let { navStates[i] = it }
+            loadedUrls.remove(i + 1)?.let { loadedUrls[i] = it }
+        }
+    }
+
     fun openSite(domain: String) {
         val url = if (domain.startsWith("http")) domain else "https://$domain"
-        if (tabs.isEmpty()) {
-            tabs.add(BrowserTab(title = domain, domain = hostOf(url), url = url, private = incognito))
-            activeIndex = 0
+        var createdId: String? = null
+        val targetIdx = if (tabs.isEmpty()) {
+            val tab = BrowserTab(title = domain, domain = hostOf(url), url = url, private = incognito)
+            createdId = tab.id
+            tabs.add(tab)
+            0
         } else {
             val index = activeIndex.coerceIn(tabs.indices)
             tabs[index] = tabs[index].copy(url = url, domain = hostOf(url))
-            activeIndex = index
+            index
         }
+        activeIndex = targetIdx
+        checkDuplicateTab(url, targetIdx, createdId)
         screenBackStack.clear()
         screen = LightningScreen.BROWSER
     }
@@ -634,26 +710,36 @@ fun LightningBrowserRoot(
         val url = if (rawUrl.startsWith("http")) rawUrl else "https://$rawUrl"
         val host = hostOf(url)
         val existingEmpty = tabs.indexOfFirst { it.url.isEmpty() }
-        if (existingEmpty >= 0) {
+        var createdId: String? = null
+        val targetIdx = if (existingEmpty >= 0) {
             tabs[existingEmpty] = tabs[existingEmpty].copy(title = host, domain = host, url = url)
-            activeIndex = existingEmpty
+            existingEmpty
         } else {
-            tabs.add(BrowserTab(title = host, domain = host, url = url, private = incognito))
-            activeIndex = tabs.size - 1
+            val tab = BrowserTab(title = host, domain = host, url = url, private = incognito)
+            createdId = tab.id
+            tabs.add(tab)
+            tabs.size - 1
         }
+        activeIndex = targetIdx
+        checkDuplicateTab(url, targetIdx, createdId)
         screenBackStack.clear()
         screen = LightningScreen.BROWSER
     }
 
     fun openSavedPage(title: String, uri: String) {
         val existingEmpty = tabs.indexOfFirst { it.url.isEmpty() }
-        if (existingEmpty >= 0) {
+        var createdId: String? = null
+        val targetIdx = if (existingEmpty >= 0) {
             tabs[existingEmpty] = tabs[existingEmpty].copy(title = title, domain = "Saved offline", url = uri)
-            activeIndex = existingEmpty
+            existingEmpty
         } else {
-            tabs.add(BrowserTab(title = title, domain = "Saved offline", url = uri, private = incognito))
-            activeIndex = tabs.size - 1
+            val tab = BrowserTab(title = title, domain = "Saved offline", url = uri, private = incognito)
+            createdId = tab.id
+            tabs.add(tab)
+            tabs.size - 1
         }
+        activeIndex = targetIdx
+        checkDuplicateTab(uri, targetIdx, createdId)
         screenBackStack.clear()
         screen = LightningScreen.BROWSER
     }
@@ -802,6 +888,26 @@ fun LightningBrowserRoot(
                         onSearchSubmitted = { recordSearch(it) },
                         onOpenDownloads = { navigateTo(LightningScreen.DOWNLOADS) },
                         onOpenInNewTab = { openInNewTab(it) },
+                        duplicateTabWarning = duplicateTabWarning,
+                        onCheckDuplicateTab = { url -> checkDuplicateTab(url, activeIndex) },
+                        onSwitchDuplicateTab = {
+                            val warning = duplicateTabWarning
+                            duplicateTabWarning = null
+                            if (warning != null) {
+                                warning.createdTabId?.let { cid ->
+                                    val cIdx = tabs.indexOfFirst { it.id == cid }
+                                    if (cIdx >= 0) removeTabAt(cIdx)
+                                }
+                                val target = tabs.indexOfFirst { it.id == warning.existingTabId }
+                                if (target >= 0) {
+                                    activeIndex = target
+                                }
+                            }
+                        },
+                        onDismissDuplicateTab = {
+                            duplicateTabWarning?.let { suppressedDuplicateUrls.add(it.normalizedUrl) }
+                            duplicateTabWarning = null
+                        },
                         showClipboardBanner = showClipboardBanner,
                         dismissedClipTimestamp = dismissedClipTimestamp,
                         onOpenClipboardBanner = {

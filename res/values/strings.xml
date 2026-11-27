@@ -258,4 +258,7 @@
     <string name="clipboard_url_open">Open</string>
     <string name="clipboard_url_fill">Paste into address bar</string>
     <string name="clipboard_url_dismiss">Dismiss</string>
+
+    <string name="duplicate_tab_title">Tab already open</string>
+    <string name="duplicate_tab_switch">Switch</string>
 </resources>
