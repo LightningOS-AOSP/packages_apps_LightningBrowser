@@ -113,6 +113,7 @@ import com.lightning.browser.ui.settings.Bookmark
 import com.lightning.browser.ui.settings.BookmarksScreen
 import com.lightning.browser.ui.settings.BrowsingScreen
 import com.lightning.browser.ui.settings.ControlsScreen
+import com.lightning.browser.ui.settings.CustomSearchEngine
 import com.lightning.browser.ui.settings.DnsProvider
 import com.lightning.browser.ui.settings.DnsScreen
 import com.lightning.browser.ui.settings.DownloadSettingsScreen
@@ -128,6 +129,7 @@ import com.lightning.browser.ui.settings.StartupBehavior
 import com.lightning.browser.ui.settings.StartupScreen
 import com.lightning.browser.ui.tabs.BrowserTab
 import com.lightning.browser.ui.tabs.ClosedTab
+import java.util.UUID
 import com.lightning.browser.ui.tabs.RecentlyClosedScreen
 import com.lightning.browser.ui.tabs.SavedPagesScreen
 import com.lightning.browser.ui.tabs.TabSwitcherScreen
@@ -309,7 +311,10 @@ fun LightningBrowserRoot(
     var themeMode by remember {
         mutableStateOf(if (incognito) ThemeMode.DARK else BrowserStore.loadThemeMode(context))
     }
+    var customSearchEngines by remember { mutableStateOf(BrowserStore.loadCustomSearchEngines(context)) }
+    var activeSearchEngineId by remember { mutableStateOf(BrowserStore.loadActiveSearchEngineId(context)) }
     var searchEngine by remember { mutableStateOf(BrowserStore.loadSearchEngine(context)) }
+    val activeCustomEngine = customSearchEngines.firstOrNull { it.id == activeSearchEngineId }
     var dnsProvider by remember { mutableStateOf(BrowserStore.loadDnsProvider(context)) }
     var customDnsUrl by remember { mutableStateOf(BrowserStore.loadCustomDnsUrl(context)) }
     var bypassTrusted by remember { mutableStateOf(BrowserStore.loadBypassTrusted(context)) }
@@ -449,6 +454,8 @@ fun LightningBrowserRoot(
         }
     }
     LaunchedEffect(themeMode) { if (!incognito) BrowserStore.saveThemeMode(context, themeMode) }
+    LaunchedEffect(customSearchEngines) { if (!incognito) BrowserStore.saveCustomSearchEngines(context, customSearchEngines) }
+    LaunchedEffect(activeSearchEngineId) { if (!incognito) BrowserStore.saveActiveSearchEngineId(context, activeSearchEngineId) }
     LaunchedEffect(searchEngine) { if (!incognito) BrowserStore.saveSearchEngine(context, searchEngine) }
     LaunchedEffect(dnsProvider) { if (!incognito) BrowserStore.saveDnsProvider(context, dnsProvider) }
     LaunchedEffect(customDnsUrl) { if (!incognito) BrowserStore.saveCustomDnsUrl(context, customDnsUrl) }
@@ -1045,6 +1052,8 @@ fun LightningBrowserRoot(
                         loadedUrls = loadedUrls,
                         adBlocking = adBlocking,
                         searchEngine = searchEngine,
+                        customSearchEngines = customSearchEngines,
+                        activeCustomEngine = activeCustomEngine,
                         dnsProvider = dnsProvider,
                         customDnsUrl = customDnsUrl,
                         bypassTrusted = bypassTrusted,
@@ -1335,6 +1344,7 @@ fun LightningBrowserRoot(
                         startupBehavior = startupBehavior,
                         themeMode = themeMode,
                         searchEngine = searchEngine,
+                        searchEngineSummary = activeCustomEngine?.name ?: stringResource(searchEngine.labelRes),
                         onOpenStartup = { navigateTo(LightningScreen.STARTUP) },
                         onOpenControls = { navigateTo(LightningScreen.CONTROLS) },
                         onOpenBrowsing = { navigateTo(LightningScreen.BROWSING) },
@@ -1367,8 +1377,35 @@ fun LightningBrowserRoot(
                         onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.SEARCH_ENGINE -> SearchEngineScreen(
-                        engine = searchEngine,
-                        onEngineSelect = { searchEngine = it },
+                        activeEngineId = activeSearchEngineId,
+                        builtInEngine = searchEngine,
+                        customEngines = customSearchEngines,
+                        onSelectBuiltIn = { engine ->
+                            searchEngine = engine
+                            activeSearchEngineId = engine.name
+                        },
+                        onSelectCustom = { custom ->
+                            activeSearchEngineId = custom.id
+                        },
+                        onAddCustomEngine = { name, url, keyword ->
+                            val newEngine = CustomSearchEngine(
+                                id = UUID.randomUUID().toString(),
+                                name = name,
+                                searchUrlFormat = url,
+                                keyword = keyword,
+                            )
+                            customSearchEngines = customSearchEngines + newEngine
+                        },
+                        onUpdateCustomEngine = { updated ->
+                            customSearchEngines = customSearchEngines.map { if (it.id == updated.id) updated else it }
+                        },
+                        onDeleteCustomEngine = { id ->
+                            customSearchEngines = customSearchEngines.filterNot { it.id == id }
+                            if (activeSearchEngineId == id) {
+                                activeSearchEngineId = SearchEngine.GOOGLE.name
+                                searchEngine = SearchEngine.GOOGLE
+                            }
+                        },
                         onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.DOWNLOADS -> DownloadsScreen(

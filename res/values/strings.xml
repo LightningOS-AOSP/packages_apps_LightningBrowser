@@ -189,6 +189,29 @@
     <string name="search_engine_wikipedia">Wikipedia</string>
     <string name="search_engine_wikipedia_detail">en.wikipedia.org</string>
 
+    <string name="search_engine_builtin_header">Standard search engines</string>
+    <string name="search_engine_custom_header">Custom search engines</string>
+    <string name="search_engine_add_button">Add search engine</string>
+    <string name="add_search_engine_title">Add Search Engine</string>
+    <string name="edit_search_engine_title">Edit Search Engine</string>
+    <string name="search_engine_name_label">Search engine name</string>
+    <string name="search_engine_name_hint">e.g., Mozilla Developer Network</string>
+    <string name="search_engine_name_error">Please add a name.</string>
+    <string name="search_engine_url_label">URL with %s in place of search term</string>
+    <string name="search_engine_url_hint">e.g., https://developer.mozilla.org/search?q=%s</string>
+    <string name="search_engine_url_error">Please enter a valid URL containing %s.</string>
+    <string name="search_engine_keyword_label">Keyword (optional)</string>
+    <string name="search_engine_keyword_hint">e.g., @mdn</string>
+    <string name="search_engine_dialog_advanced">Advanced</string>
+    <string name="search_engine_dialog_cancel">Cancel</string>
+    <string name="search_engine_dialog_add">Add Engine</string>
+    <string name="search_engine_dialog_save">Save</string>
+    <string name="search_engine_dialog_method">Method</string>
+    <string name="search_engine_dialog_encoding">Encoding</string>
+    <string name="search_engine_delete_confirm">Delete custom search engine?</string>
+    <string name="search_engine_delete">Delete</string>
+    <string name="search_engine_edit">Edit</string>
+
     <string name="downloads_title">Downloads</string>
     <string name="downloads_group_today">Today</string>
     <string name="downloads_group_yesterday">Yesterday</string>

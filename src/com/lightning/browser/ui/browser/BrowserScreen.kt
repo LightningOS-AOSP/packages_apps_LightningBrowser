@@ -130,6 +130,7 @@ import com.lightning.browser.ui.home.ChipTone
 import com.lightning.browser.ui.home.RecentPage
 import com.lightning.browser.ui.root.DuplicateTabWarning
 import com.lightning.browser.ui.settings.Bookmark
+import com.lightning.browser.ui.settings.CustomSearchEngine
 import com.lightning.browser.ui.settings.DnsProvider
 import com.lightning.browser.ui.settings.SearchEngine
 import com.lightning.browser.ui.settings.searchUrl
@@ -214,6 +215,8 @@ fun BrowserScreen(
     loadedUrls: SnapshotStateMap<Int, String>,
     adBlocking: Boolean,
     searchEngine: SearchEngine,
+    customSearchEngines: List<CustomSearchEngine> = emptyList(),
+    activeCustomEngine: CustomSearchEngine? = null,
     dnsProvider: DnsProvider = DnsProvider.OFF,
     customDnsUrl: String = "",
     bypassTrusted: Boolean = false,
@@ -530,9 +533,12 @@ fun BrowserScreen(
             onSubmit = {
                 val text = query.trim()
                 if (text.isNotEmpty() && tabs.isNotEmpty()) {
-                    val url = toUrl(text, searchEngine)
+                    val url = toUrl(text, searchEngine, customSearchEngines, activeCustomEngine)
                     onUpdateTab(activeIndex, tabs[activeIndex].copy(url = url, domain = hostOf(url)))
-                    if (url == searchEngine.searchUrl(text)) onSearchSubmitted(text)
+                    val activeSearchUrl = activeCustomEngine?.searchUrl(text) ?: searchEngine.searchUrl(text)
+                    if (url == activeSearchUrl || customSearchEngines.any { it.searchUrl(text) == url }) {
+                        onSearchSubmitted(text)
+                    }
                     onCheckDuplicateTab(url)
                     onClearEditFromHome()
                     editing = false
@@ -736,7 +742,7 @@ fun BrowserScreen(
                     },
                     onSearch = { term ->
                         if (tabs.isNotEmpty()) {
-                            val url = searchEngine.searchUrl(term)
+                            val url = activeCustomEngine?.searchUrl(term) ?: searchEngine.searchUrl(term)
                             onUpdateTab(activeIndex, tabs[activeIndex].copy(url = url, domain = hostOf(url)))
                             onSearchSubmitted(term)
                             onCheckDuplicateTab(url)
@@ -2685,13 +2691,51 @@ private sealed class DuplicateDownloadPrompt(
     ) : DuplicateDownloadPrompt(existingName, suggestedName)
 }
 
-private fun toUrl(text: String, engine: SearchEngine): String {
+private fun findKeywordMatch(
+    text: String,
+    customEngines: List<CustomSearchEngine>,
+): Pair<CustomSearchEngine, String>? {
     val trimmed = text.trim()
+    for (engine in customEngines) {
+        val rawKw = engine.keyword.trim()
+        if (rawKw.isEmpty()) continue
+        val variants = listOf(
+            rawKw,
+            rawKw.removePrefix("@"),
+            "@" + rawKw.removePrefix("@"),
+        ).filter { it.isNotEmpty() }.distinct()
+
+        for (v in variants) {
+            if (trimmed.equals(v, ignoreCase = true)) {
+                return engine to ""
+            }
+            if (trimmed.startsWith("$v ", ignoreCase = true)) {
+                val query = trimmed.substring(v.length + 1).trim()
+                return engine to query
+            }
+        }
+    }
+    return null
+}
+
+private fun toUrl(
+    text: String,
+    engine: SearchEngine,
+    customEngines: List<CustomSearchEngine> = emptyList(),
+    activeCustomEngine: CustomSearchEngine? = null,
+): String {
+    val trimmed = text.trim()
+    val keywordMatch = findKeywordMatch(trimmed, customEngines)
+    if (keywordMatch != null) {
+        val (matchedEngine, query) = keywordMatch
+        return matchedEngine.searchUrl(query)
+    }
     val hasScheme = trimmed.startsWith("http://") || trimmed.startsWith("https://")
     val looksLikeUrl = trimmed.contains(".") && !trimmed.contains(" ") && !hasScheme
     return when {
         hasScheme -> trimmed
         looksLikeUrl -> "https://$trimmed"
+        activeCustomEngine != null -> activeCustomEngine.searchUrl(trimmed)
         else -> engine.searchUrl(trimmed)
     }
 }

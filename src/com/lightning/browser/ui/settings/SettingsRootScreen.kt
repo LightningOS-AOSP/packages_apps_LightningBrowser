@@ -29,6 +29,7 @@ fun SettingsRootScreen(
     startupBehavior: StartupBehavior,
     themeMode: ThemeMode,
     searchEngine: SearchEngine,
+    searchEngineSummary: String? = null,
     onOpenStartup: () -> Unit,
     onOpenControls: () -> Unit,
     onOpenBrowsing: () -> Unit,
@@ -94,7 +95,7 @@ fun SettingsRootScreen(
                 5 -> SettingsRow(
                     icon = Icons.Filled.Language,
                     title = stringResource(R.string.settings_search_engine),
-                    summary = stringResource(searchEngine.labelRes),
+                    summary = searchEngineSummary ?: stringResource(searchEngine.labelRes),
                     onClick = onOpenSearchEngine,
                     shape = shape,
                     index = i,

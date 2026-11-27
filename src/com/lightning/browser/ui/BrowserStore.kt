@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import com.lightning.browser.ui.home.PinnedSite
 import com.lightning.browser.ui.settings.Bookmark
+import com.lightning.browser.ui.settings.CustomSearchEngine
 import com.lightning.browser.ui.settings.DnsProvider
 import com.lightning.browser.ui.settings.HistoryEntry
 import com.lightning.browser.ui.settings.SearchEngine
@@ -31,6 +32,8 @@ object BrowserStore {
     private const val KEY_PINNED = "pinned_sites"
     private const val KEY_THEME = "theme_mode"
     private const val KEY_SEARCH_ENGINE = "search_engine"
+    private const val KEY_ACTIVE_SEARCH_ENGINE_ID = "active_search_engine_id"
+    private const val KEY_CUSTOM_SEARCH_ENGINES = "custom_search_engines"
     private const val KEY_DNS_PROVIDER = "dns_provider"
     private const val KEY_DNS_URL = "dns_url"
     private const val KEY_DNS_BYPASS = "dns_bypass"
@@ -199,7 +202,56 @@ object BrowserStore {
             ?: SearchEngine.GOOGLE
 
     fun saveSearchEngine(context: Context, engine: SearchEngine) {
-        prefs(context).edit().putString(KEY_SEARCH_ENGINE, engine.name).apply()
+        prefs(context).edit()
+            .putString(KEY_SEARCH_ENGINE, engine.name)
+            .putString(KEY_ACTIVE_SEARCH_ENGINE_ID, engine.name)
+            .apply()
+    }
+
+    fun loadActiveSearchEngineId(context: Context): String =
+        prefs(context).getString(KEY_ACTIVE_SEARCH_ENGINE_ID, null)
+            ?: prefs(context).getString(KEY_SEARCH_ENGINE, SearchEngine.GOOGLE.name)
+            ?: SearchEngine.GOOGLE.name
+
+    fun saveActiveSearchEngineId(context: Context, id: String) {
+        val editor = prefs(context).edit().putString(KEY_ACTIVE_SEARCH_ENGINE_ID, id)
+        SearchEngine.entries.firstOrNull { it.name == id }?.let {
+            editor.putString(KEY_SEARCH_ENGINE, it.name)
+        }
+        editor.apply()
+    }
+
+    fun loadCustomSearchEngines(context: Context): List<CustomSearchEngine> {
+        val raw = prefs(context).getString(KEY_CUSTOM_SEARCH_ENGINES, null) ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            val list = mutableListOf<CustomSearchEngine>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(
+                    CustomSearchEngine(
+                        id = obj.getString("id"),
+                        name = obj.getString("name"),
+                        searchUrlFormat = obj.getString("searchUrl"),
+                        keyword = obj.optString("keyword", ""),
+                    )
+                )
+            }
+            list
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveCustomSearchEngines(context: Context, engines: List<CustomSearchEngine>) {
+        val array = JSONArray()
+        engines.forEach { engine ->
+            val obj = JSONObject()
+            obj.put("id", engine.id)
+            obj.put("name", engine.name)
+            obj.put("searchUrl", engine.searchUrlFormat)
+            obj.put("keyword", engine.keyword)
+            array.put(obj)
+        }
+        prefs(context).edit().putString(KEY_CUSTOM_SEARCH_ENGINES, array.toString()).apply()
     }
 
     fun loadDnsProvider(context: Context): DnsProvider =

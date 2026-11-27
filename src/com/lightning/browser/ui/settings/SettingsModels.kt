@@ -3,6 +3,7 @@ package com.lightning.browser.ui.settings
 import androidx.annotation.StringRes
 import com.lightning.browser.R
 import java.net.URLEncoder
+import java.util.UUID
 
 enum class DnsProvider(
     @StringRes val labelRes: Int,
@@ -28,6 +29,22 @@ enum class SearchEngine(
     WIKIPEDIA(R.string.search_engine_wikipedia, R.string.search_engine_wikipedia_detail, "https://en.wikipedia.org/w/index.php?search=%s"),
 }
 
+data class CustomSearchEngine(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val searchUrlFormat: String,
+    val keyword: String = "",
+)
+
+fun formatSearchUrl(format: String, query: String): String {
+    val encoded = URLEncoder.encode(query.trim(), "UTF-8")
+    return if (format.contains("%s")) {
+        format.replace("%s", encoded)
+    } else {
+        "$format$encoded"
+    }
+}
+
 enum class StartupBehavior(
     @StringRes val labelRes: Int,
     @StringRes val summaryRes: Int,
@@ -37,4 +54,7 @@ enum class StartupBehavior(
 }
 
 fun SearchEngine.searchUrl(query: String): String =
-    String.format(searchUrlFormat, URLEncoder.encode(query.trim(), "UTF-8"))
+    formatSearchUrl(searchUrlFormat, query)
+
+fun CustomSearchEngine.searchUrl(query: String): String =
+    formatSearchUrl(searchUrlFormat, query)
