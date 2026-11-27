@@ -16,22 +16,33 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.TabUnselected
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFloatingActionButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.lightning.browser.R
 import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.theme.EyebrowTextStyle
@@ -47,6 +58,18 @@ fun TabSwitcherScreen(
     onOpenTab: (Int) -> Unit = {},
 ) {
     val colors = LightningTheme.colors
+    var showCloseAllConfirm by remember { mutableStateOf(false) }
+
+    if (showCloseAllConfirm) {
+        CloseAllTabsConfirmDialog(
+            onDismiss = { showCloseAllConfirm = false },
+            onConfirm = {
+                showCloseAllConfirm = false
+                onCloseAll()
+            },
+        )
+    }
+
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             Row(
@@ -74,7 +97,10 @@ fun TabSwitcherScreen(
                     )
                 }
                 Spacer(Modifier.weight(1f))
-                TextButton(onClick = onCloseAll) {
+                TextButton(
+                    onClick = { showCloseAllConfirm = true },
+                    enabled = tabs.isNotEmpty(),
+                ) {
                     Text(
                         text = stringResource(R.string.tabs_close_all),
                         style = EyebrowTextStyle,
@@ -212,6 +238,91 @@ private fun TabCard(tab: BrowserTab, index: Int, onClose: () -> Unit, onOpen: ()
                             style = MaterialTheme.typography.labelMedium,
                             color = colors.onSurfaceVariant,
                             maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CloseAllTabsConfirmDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    val errorColor = MaterialTheme.colorScheme.error
+    val onErrorColor = MaterialTheme.colorScheme.onError
+    val errorContainer = MaterialTheme.colorScheme.errorContainer
+    val onErrorContainer = MaterialTheme.colorScheme.onErrorContainer
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = colors.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            shadowElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+            ) {
+                ShapedIcon(
+                    icon = Icons.Filled.TabUnselected,
+                    shape = ExpressiveShapes.Burst8,
+                    container = errorContainer,
+                    content = onErrorContainer,
+                    size = 52.dp,
+                    iconSize = 26.dp,
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.tabs_close_all_confirm_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.tabs_close_all_confirm_message),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = CircleShape,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.outline),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.tabs_close_all_cancel_action),
+                            color = colors.onSurface,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Button(
+                        onClick = onConfirm,
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = errorColor,
+                            contentColor = onErrorColor,
+                        ),
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .height(48.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.tabs_close_all_confirm_action),
+                            fontWeight = FontWeight.SemiBold,
                         )
                     }
                 }
