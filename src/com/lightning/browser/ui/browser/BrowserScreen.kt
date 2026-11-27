@@ -1553,7 +1553,13 @@ private fun BrowserPage(
                     settings.cacheMode = WebSettings.LOAD_NO_CACHE
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
                 }
-                setBackgroundColor(colors.surface.toArgb())
+                setBackgroundColor(android.graphics.Color.WHITE)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    isForceDarkAllowed = false
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    settings.isAlgorithmicDarkeningAllowed = false
+                }
                 config.defaultUserAgent = settings.userAgentString
                 applyDesktopMode(this, config, tab.desktopMode)
                 val fullscreen = FullscreenVideo(context)

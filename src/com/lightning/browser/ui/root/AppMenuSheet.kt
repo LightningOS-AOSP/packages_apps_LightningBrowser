@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.RestorePage
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -141,7 +142,7 @@ fun AppMenuSheet(
                     )
                     if (recentlyClosedVisible) {
                         add(
-                            MenuAction(Icons.Filled.History, stringResource(R.string.tabs_recently_closed_header)) {
+                            MenuAction(Icons.Filled.RestorePage, stringResource(R.string.tabs_recently_closed_header)) {
                                 onOpen(LightningScreen.RECENTLY_CLOSED)
                             },
                         )
