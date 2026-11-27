@@ -72,6 +72,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -285,6 +286,7 @@ fun BrowserScreen(
         }
         Box(Modifier.weight(1f)) {
             if (activeTab != null && activeTab.url.isNotEmpty()) {
+                key(activeTab.id) {
                 BrowserPage(
                     tab = activeTab,
                     index = activeIndex,
@@ -350,6 +352,7 @@ fun BrowserScreen(
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
+                }
             } else {
                 EmptyBrowser()
             }
@@ -1010,7 +1013,7 @@ private fun BrowserPage(
     val colors = LightningTheme.colors
     AndroidView(
         factory = { context ->
-            webViews[index] ?: WebView(context).apply {
+            (webViews[index] ?: WebView(context).apply {
                 layoutParams = ViewGroup.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
@@ -1232,6 +1235,8 @@ private fun BrowserPage(
                     loadedUrls[index] = tab.url
                     it.loadUrl(tab.url)
                 }
+            }).also { wv ->
+                (wv.parent as? ViewGroup)?.removeView(wv)
             }
         },
         update = { wv ->

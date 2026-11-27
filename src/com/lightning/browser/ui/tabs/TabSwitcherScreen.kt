@@ -252,8 +252,9 @@ private fun TabCard(
                     .background(colors.surfaceContainerHighest),
             ) {
                 if (tab.url.isNotEmpty() && thumbnail != null) {
+                    val imageBitmap = remember(thumbnail) { thumbnail.asImageBitmap() }
                     Image(
-                        bitmap = thumbnail.asImageBitmap(),
+                        bitmap = imageBitmap,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
                         alignment = Alignment.TopCenter,

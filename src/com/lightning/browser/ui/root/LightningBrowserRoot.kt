@@ -505,8 +505,58 @@ fun LightningBrowserRoot(
                     .navigationBarsPadding()
                     .padding(bottom = barPadding),
             ) {
-                Crossfade(targetState = screen, animationSpec = tween(200), modifier = Modifier.fillMaxSize()) { s ->
-                    when (s) {
+                val keepBrowserMounted = screen == LightningScreen.BROWSER ||
+                    (screen == LightningScreen.TABS && tabsReturnScreen == LightningScreen.BROWSER)
+                if (keepBrowserMounted) {
+                    BrowserScreen(
+                        tabs = tabs,
+                        activeIndex = activeIndex,
+                        navStates = navStates,
+                        webViews = webViews,
+                        loadedUrls = loadedUrls,
+                        adBlocking = adBlocking,
+                        searchEngine = searchEngine,
+                        dnsProvider = dnsProvider,
+                        customDnsUrl = customDnsUrl,
+                        bypassTrusted = bypassTrusted,
+                        onBlocked = { blockedCount++ },
+                        onDnsResolved = { dnsResolvedCount++ },
+                        focusSignal = addressFocusSignal,
+                        onFocusConsumed = { addressFocusSignal = 0 },
+                        chromeVisible = chromeVisible,
+                        onChromeVisibleChange = { chromeVisible = it },
+                        recentSearches = recentSearches,
+                        recentPages = recentPages,
+                        bookmarks = bookmarks,
+                        onUpdateTab = { index, tab -> if (index in tabs.indices) tabs[index] = tab },
+                        onRecordVisit = { title, domain ->
+                            recordVisit(title, domain)
+                            webViews[activeIndex]?.postDelayed({
+                                if (screen == LightningScreen.BROWSER) {
+                                    captureTabThumbnail(activeIndex)
+                                }
+                            }, 600L)
+                        },
+                        onSearchSubmitted = { recordSearch(it) },
+                        onOpenDownloads = { navigateTo(LightningScreen.DOWNLOADS) },
+                        onBackHome = {
+                            captureTabThumbnail(activeIndex)
+                            screen = LightningScreen.HOME
+                        },
+                    )
+                }
+                AnimatedVisibility(
+                    visible = screen != LightningScreen.BROWSER,
+                    enter = fadeIn(tween(150)),
+                    exit = fadeOut(tween(140)),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(LightningTheme.colors.surface),
+                    ) {
+                        Crossfade(targetState = screen, animationSpec = tween(160), modifier = Modifier.fillMaxSize()) { s ->
+                            when (s) {
                     LightningScreen.HOME -> HomeScreen(
                         recentPages = recentPages,
                         pinnedSites = pinnedSites,
@@ -573,42 +623,7 @@ fun LightningBrowserRoot(
                             screen = LightningScreen.BROWSER
                         },
                     )
-                    LightningScreen.BROWSER -> BrowserScreen(
-                        tabs = tabs,
-                        activeIndex = activeIndex,
-                        navStates = navStates,
-                        webViews = webViews,
-                        loadedUrls = loadedUrls,
-                        adBlocking = adBlocking,
-                        searchEngine = searchEngine,
-                        dnsProvider = dnsProvider,
-                        customDnsUrl = customDnsUrl,
-                        bypassTrusted = bypassTrusted,
-                        onBlocked = { blockedCount++ },
-                        onDnsResolved = { dnsResolvedCount++ },
-                        focusSignal = addressFocusSignal,
-                        onFocusConsumed = { addressFocusSignal = 0 },
-                        chromeVisible = chromeVisible,
-                        onChromeVisibleChange = { chromeVisible = it },
-                        recentSearches = recentSearches,
-                        recentPages = recentPages,
-                        bookmarks = bookmarks,
-                        onUpdateTab = { index, tab -> if (index in tabs.indices) tabs[index] = tab },
-                        onRecordVisit = { title, domain ->
-                            recordVisit(title, domain)
-                            webViews[activeIndex]?.postDelayed({
-                                if (screen == LightningScreen.BROWSER) {
-                                    captureTabThumbnail(activeIndex)
-                                }
-                            }, 600L)
-                        },
-                        onSearchSubmitted = { recordSearch(it) },
-                        onOpenDownloads = { navigateTo(LightningScreen.DOWNLOADS) },
-                        onBackHome = {
-                            captureTabThumbnail(activeIndex)
-                            screen = LightningScreen.HOME
-                        },
-                    )
+                    LightningScreen.BROWSER -> Unit
                     LightningScreen.SETTINGS -> SettingsRootScreen(
                         startupBehavior = startupBehavior,
                         themeMode = themeMode,
@@ -683,6 +698,8 @@ fun LightningBrowserRoot(
                     LightningScreen.SITE_PERMISSIONS -> SitePermissionsScreen(
                         onBack = { navigateBack(LightningScreen.PRIVACY) },
                     )
+                    }
+                        }
                     }
                 }
             }
