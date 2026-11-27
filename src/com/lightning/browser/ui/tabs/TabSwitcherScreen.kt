@@ -1,22 +1,31 @@
 package com.lightning.browser.ui.tabs
 
 import android.graphics.Bitmap
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -25,6 +34,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -52,12 +63,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.delay
@@ -68,6 +83,7 @@ import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.rememberLightningHaptics
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TabSwitcherScreen(
     tabs: SnapshotStateList<BrowserTab>,
@@ -79,8 +95,26 @@ fun TabSwitcherScreen(
 ) {
     val colors = LightningTheme.colors
     val haptics = rememberLightningHaptics()
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val imeVisible = WindowInsets.isImeVisible
+    var wasImeVisible by remember { mutableStateOf(false) }
+    var searchFocused by remember { mutableStateOf(false) }
     var showCloseAllConfirm by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+
+    LaunchedEffect(imeVisible) {
+        if (wasImeVisible && !imeVisible) {
+            focusManager.clearFocus()
+        }
+        wasImeVisible = imeVisible
+    }
+
+    BackHandler(enabled = searchFocused || searchQuery.isNotEmpty()) {
+        searchQuery = ""
+        focusManager.clearFocus()
+        keyboard?.hide()
+    }
 
     if (showCloseAllConfirm) {
         CloseAllTabsConfirmDialog(
@@ -149,7 +183,8 @@ fun TabSwitcherScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp)
-                    .padding(bottom = 6.dp),
+                    .padding(bottom = 6.dp)
+                    .onFocusChanged { searchFocused = it.isFocused },
             )
 
             Crossfade(
@@ -193,24 +228,31 @@ fun TabSwitcherScreen(
             }
         }
 
-        LargeFloatingActionButton(
-            onClick = onNewTab,
-            shape = ExpressiveShapes.Cookie9,
-            containerColor = colors.primary,
-            contentColor = colors.onPrimary,
+        AnimatedVisibility(
+            visible = !searchFocused && !imeVisible && searchQuery.isEmpty(),
+            enter = fadeIn(tween(150)) + scaleIn(tween(150), initialScale = 0.85f),
+            exit = fadeOut(tween(120)) + scaleOut(tween(120), targetScale = 0.85f),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 20.dp, bottom = 24.dp),
         ) {
-            Icon(
-                Icons.Filled.Add,
-                contentDescription = stringResource(R.string.bar_new_tab),
-                modifier = Modifier.size(36.dp),
-            )
+            LargeFloatingActionButton(
+                onClick = onNewTab,
+                shape = ExpressiveShapes.Cookie9,
+                containerColor = colors.primary,
+                contentColor = colors.onPrimary,
+            ) {
+                Icon(
+                    Icons.Filled.Add,
+                    contentDescription = stringResource(R.string.bar_new_tab),
+                    modifier = Modifier.size(36.dp),
+                )
+            }
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun TabsSearchBar(
     query: String,
@@ -219,6 +261,19 @@ internal fun TabsSearchBar(
     modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    val imeVisible = WindowInsets.isImeVisible
+    var wasImeVisible by remember { mutableStateOf(false) }
+    var isFocused by remember { mutableStateOf(false) }
+
+    LaunchedEffect(imeVisible) {
+        if (wasImeVisible && !imeVisible) {
+            focusManager.clearFocus()
+        }
+        wasImeVisible = imeVisible
+    }
+
     TextField(
         value = query,
         onValueChange = onQueryChange,
@@ -233,8 +288,12 @@ internal fun TabsSearchBar(
             Icon(Icons.Filled.Search, contentDescription = null, tint = colors.onSurfaceVariant)
         },
         trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = { onQueryChange("") }) {
+            if (query.isNotEmpty() || isFocused) {
+                IconButton(onClick = {
+                    onQueryChange("")
+                    focusManager.clearFocus()
+                    keyboard?.hide()
+                }) {
                     Icon(
                         imageVector = Icons.Filled.Close,
                         contentDescription = stringResource(R.string.browser_clear_query),
@@ -248,6 +307,11 @@ internal fun TabsSearchBar(
             color = colors.onSurface,
             fontWeight = FontWeight.Medium,
         ),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = {
+            focusManager.clearFocus()
+            keyboard?.hide()
+        }),
         shape = RoundedCornerShape(28.dp),
         colors = TextFieldDefaults.colors(
             focusedContainerColor = colors.surfaceContainerHigh,
@@ -256,7 +320,7 @@ internal fun TabsSearchBar(
             unfocusedIndicatorColor = Color.Transparent,
             cursorColor = colors.primary,
         ),
-        modifier = modifier,
+        modifier = modifier.onFocusChanged { isFocused = it.isFocused },
     )
 }
 
