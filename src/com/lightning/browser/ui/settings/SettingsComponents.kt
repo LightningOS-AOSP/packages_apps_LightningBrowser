@@ -54,6 +54,7 @@ import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.components.TonalIconButton
 import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.rememberLightningHaptics
 import com.lightning.browser.ui.theme.tone
 import com.lightning.browser.ui.theme.ThemeMode
 
@@ -153,6 +154,7 @@ fun SettingsSwitchRow(
     shape: Shape = ExpressiveShapes.grouped(0, 1),
 ) {
     val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
     Surface(
         shape = shape,
         color = colors.surfaceContainerHigh,
@@ -177,7 +179,10 @@ fun SettingsSwitchRow(
             Spacer(Modifier.width(12.dp))
             Switch(
                 checked = checked,
-                onCheckedChange = onCheckedChange,
+                onCheckedChange = {
+                    haptics.tick()
+                    onCheckedChange(it)
+                },
                 thumbContent = if (checked) {
                     {
                         Icon(
@@ -211,8 +216,12 @@ fun SettingsRadioRow(
     shape: Shape = ExpressiveShapes.grouped(0, 1),
 ) {
     val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
     Surface(
-        onClick = onClick,
+        onClick = {
+            haptics.tick()
+            onClick()
+        },
         shape = shape,
         color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
@@ -287,6 +296,7 @@ fun SwipeToDeleteBox(
     shape: Shape = MaterialTheme.shapes.extraSmall,
     content: @Composable () -> Unit,
 ) {
+    val haptics = rememberLightningHaptics()
     var isRemoved by remember { mutableStateOf(false) }
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
@@ -298,6 +308,14 @@ fun SwipeToDeleteBox(
             }
         },
     )
+    var wasTriggered by remember { mutableStateOf(false) }
+    LaunchedEffect(dismissState.targetValue) {
+        val triggered = dismissState.targetValue == SwipeToDismissBoxValue.EndToStart
+        if (triggered && !wasTriggered) {
+            haptics.gestureThreshold()
+        }
+        wasTriggered = triggered
+    }
     LaunchedEffect(isRemoved) {
         if (isRemoved) {
             delay(240L)

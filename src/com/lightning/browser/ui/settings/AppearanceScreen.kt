@@ -36,11 +36,14 @@ import com.lightning.browser.ui.theme.LightningMotion
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.ThemeMode
 import com.lightning.browser.ui.theme.lightningColorsFor
+import com.lightning.browser.ui.theme.rememberLightningHaptics
 
 @Composable
 fun AppearanceScreen(
     themeMode: ThemeMode,
     onThemeModeSelect: (ThemeMode) -> Unit,
+    hapticsEnabled: Boolean,
+    onHapticsChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -56,12 +59,20 @@ fun AppearanceScreen(
         SegmentedThemePicker(themeMode, onThemeModeSelect)
         Spacer(Modifier.height(28.dp))
         ThemePreview(themeMode)
+        Spacer(Modifier.height(20.dp))
+        SettingsSwitchRow(
+            title = stringResource(R.string.appearance_haptics),
+            summary = stringResource(R.string.appearance_haptics_summary),
+            checked = hapticsEnabled,
+            onCheckedChange = onHapticsChange,
+        )
     }
 }
 
 @Composable
 private fun SegmentedThemePicker(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) {
     val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
     Row(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         modifier = Modifier
@@ -83,7 +94,10 @@ private fun SegmentedThemePicker(selected: ThemeMode, onSelect: (ThemeMode) -> U
                 bottomEnd = if (i == last) 26.dp else inner,
             )
             Surface(
-                onClick = { onSelect(mode) },
+                onClick = {
+                    haptics.tick()
+                    onSelect(mode)
+                },
                 shape = shape,
                 color = if (isSelected) colors.primary else colors.surfaceContainerHigh,
                 modifier = Modifier

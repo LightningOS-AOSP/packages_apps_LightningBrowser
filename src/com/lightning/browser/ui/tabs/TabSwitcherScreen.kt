@@ -61,6 +61,7 @@ import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.theme.EyebrowTextStyle
 import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.rememberLightningHaptics
 
 @Composable
 fun TabSwitcherScreen(
@@ -72,12 +73,14 @@ fun TabSwitcherScreen(
     onOpenTab: (Int) -> Unit = {},
 ) {
     val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
     var showCloseAllConfirm by remember { mutableStateOf(false) }
 
     if (showCloseAllConfirm) {
         CloseAllTabsConfirmDialog(
             onDismiss = { showCloseAllConfirm = false },
             onConfirm = {
+                haptics.reject()
                 showCloseAllConfirm = false
                 onCloseAll()
             },

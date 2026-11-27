@@ -26,14 +26,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.ui.theme.LightningMotion
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.LobedShape
+import com.lightning.browser.ui.theme.rememberLightningHaptics
 
 @Composable
 fun Modifier.pressScale(source: InteractionSource, pressed: Float = 0.94f): Modifier {
@@ -86,7 +85,7 @@ fun MorphButton(
     lobes: Int = 9,
     onLongClick: (() -> Unit)? = null,
 ) {
-    val haptics = LocalHapticFeedback.current
+    val haptics = rememberLightningHaptics()
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val amp by animateFloatAsState(
@@ -112,7 +111,7 @@ fun MorphButton(
                 onClick = onClick,
                 onLongClick = onLongClick?.let { callback ->
                     {
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        haptics.longPress()
                         callback()
                     }
                 },

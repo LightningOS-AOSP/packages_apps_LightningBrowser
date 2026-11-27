@@ -201,4 +201,7 @@
     <string name="quick_arc_home">Home</string>
     <string name="quick_arc_tabs">All tabs</string>
     <string name="quick_arc_settings">Settings</string>
+
+    <string name="appearance_haptics">Haptic feedback</string>
+    <string name="appearance_haptics_summary">Tactile feedback for taps, toggles and gestures</string>
 </resources>

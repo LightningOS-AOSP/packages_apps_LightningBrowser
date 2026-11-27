@@ -45,6 +45,7 @@ import com.lightning.browser.ui.theme.EyebrowTextStyle
 import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningColors
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.rememberLightningHaptics
 import com.lightning.browser.ui.theme.tone
 import com.lightning.browser.ui.theme.WordmarkTextStyle
 
@@ -185,6 +186,7 @@ private fun QuickAccessRow(
     onRemovePinned: (PinnedSite) -> Unit,
 ) {
     val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
     LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         itemsIndexed(pinnedSites) { i, site ->
             val (container, onContainer) = colors.chipColors(site.tone)
@@ -195,7 +197,10 @@ private fun QuickAccessRow(
                     .pointerInput(site) {
                         detectTapGestures(
                             onTap = { onOpenSite(site.domain) },
-                            onLongPress = { onRemovePinned(site) },
+                            onLongPress = {
+                                haptics.longPress()
+                                onRemovePinned(site)
+                            },
                         )
                     },
             ) {

@@ -46,6 +46,7 @@ import com.lightning.browser.ui.theme.EyebrowTextStyle
 import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningColors
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.rememberLightningHaptics
 
 @Composable
 fun HistoryScreen(
@@ -57,12 +58,14 @@ fun HistoryScreen(
     modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
     var showClearConfirm by remember { mutableStateOf(false) }
 
     if (showClearConfirm) {
         ClearHistoryConfirmDialog(
             onDismiss = { showClearConfirm = false },
             onConfirm = {
+                haptics.reject()
                 showClearConfirm = false
                 onClear()
             },

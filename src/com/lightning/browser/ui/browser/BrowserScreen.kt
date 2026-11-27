@@ -103,6 +103,7 @@ import com.lightning.browser.R
 import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.components.MorphLoader
 import com.lightning.browser.ui.components.ShapedIcon
+import com.lightning.browser.ui.theme.rememberLightningHaptics
 import com.lightning.browser.ui.components.TonalIconButton
 import com.lightning.browser.ui.home.ChipTone
 import com.lightning.browser.ui.home.RecentPage
@@ -488,6 +489,7 @@ private fun WaybackPromptBanner(
     onDismiss: () -> Unit,
 ) {
     val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
     Surface(
         shape = RoundedCornerShape(28.dp),
         color = colors.surfaceContainerHigh,
@@ -531,7 +533,10 @@ private fun WaybackPromptBanner(
             }
             Spacer(Modifier.width(8.dp))
             Button(
-                onClick = onLoadSnapshot,
+                onClick = {
+                    haptics.confirm()
+                    onLoadSnapshot()
+                },
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colors.primary,

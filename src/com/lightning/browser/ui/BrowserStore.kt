@@ -41,6 +41,7 @@ object BrowserStore {
     private const val KEY_HIDDEN_DOWNLOADS = "hidden_downloads"
     private const val KEY_DOWNLOADS = "browser_downloads"
     private const val KEY_DEFAULT_BROWSER_PROMPTED = "default_browser_prompted"
+    private const val KEY_HAPTIC_FEEDBACK = "haptic_feedback"
     private const val MAX_HISTORY = 200
     private const val MAX_DOWNLOADS = 200
     private const val MAX_SEARCHES = 10
@@ -218,6 +219,13 @@ object BrowserStore {
 
     fun saveFingerprintLock(context: Context, value: Boolean) {
         prefs(context).edit().putBoolean(KEY_FINGERPRINT, value).apply()
+    }
+
+    fun loadHapticFeedback(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_HAPTIC_FEEDBACK, true)
+
+    fun saveHapticFeedback(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_HAPTIC_FEEDBACK, value).apply()
     }
 
     fun loadTabs(context: Context): List<BrowserTab> {

@@ -59,6 +59,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -115,7 +116,9 @@ import com.lightning.browser.ui.tabs.BrowserTab
 import com.lightning.browser.ui.tabs.TabSwitcherScreen
 import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.LocalHapticsEnabled
 import com.lightning.browser.ui.theme.ThemeMode
+import com.lightning.browser.ui.theme.rememberLightningHaptics
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 enum class LightningScreen {
@@ -188,6 +191,7 @@ fun LightningBrowserRoot(
     var bypassTrusted by remember { mutableStateOf(BrowserStore.loadBypassTrusted(context)) }
     var adBlocking by remember { mutableStateOf(BrowserStore.loadAdBlocking(context)) }
     var fingerprintLock by remember { mutableStateOf(BrowserStore.loadFingerprintLock(context)) }
+    var hapticsEnabled by remember { mutableStateOf(BrowserStore.loadHapticFeedback(context)) }
     var blockedCount by remember { mutableIntStateOf(0) }
     var dnsResolvedCount by remember { mutableIntStateOf(0) }
 
@@ -277,6 +281,9 @@ fun LightningBrowserRoot(
     LaunchedEffect(fingerprintLock) {
         if (!incognito) BrowserStore.saveFingerprintLock(context, fingerprintLock)
         if (fingerprintLock) locked = true
+    }
+    LaunchedEffect(hapticsEnabled) {
+        if (!incognito) BrowserStore.saveHapticFeedback(context, hapticsEnabled)
     }
 
     fun captureTabThumbnail(index: Int) {
@@ -475,7 +482,8 @@ fun LightningBrowserRoot(
         }
     }
 
-    LightningTheme(themeMode = themeMode) {
+    CompositionLocalProvider(LocalHapticsEnabled provides hapticsEnabled) {
+        LightningTheme(themeMode = themeMode) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -646,6 +654,8 @@ fun LightningBrowserRoot(
                     LightningScreen.APPEARANCE -> AppearanceScreen(
                         themeMode = themeMode,
                         onThemeModeSelect = { themeMode = it },
+                        hapticsEnabled = hapticsEnabled,
+                        onHapticsChange = { hapticsEnabled = it },
                         onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.DNS -> DnsScreen(
@@ -778,6 +788,7 @@ fun LightningBrowserRoot(
             }
             if (showClearData) {
                 val colors = LightningTheme.colors
+                val haptics = rememberLightningHaptics()
                 AlertDialog(
                     onDismissRequest = { showClearData = false },
                     title = {
@@ -800,6 +811,7 @@ fun LightningBrowserRoot(
                     },
                     confirmButton = {
                         TextButton(onClick = {
+                            haptics.reject()
                             showClearData = false
                             clearBrowsingData()
                         }) {
@@ -887,6 +899,7 @@ fun LightningBrowserRoot(
                 )
             }
         }
+    }
     }
 }
 
@@ -1002,6 +1015,7 @@ private fun DefaultBrowserPromptDialog(
 @Composable
 private fun LockScreen(error: Boolean, onUnlock: () -> Unit) {
     val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1033,7 +1047,10 @@ private fun LockScreen(error: Boolean, onUnlock: () -> Unit) {
             )
             Spacer(Modifier.height(24.dp))
             Button(
-                onClick = onUnlock,
+                onClick = {
+                    haptics.confirm()
+                    onUnlock()
+                },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colors.primary,
                     contentColor = colors.onPrimary,

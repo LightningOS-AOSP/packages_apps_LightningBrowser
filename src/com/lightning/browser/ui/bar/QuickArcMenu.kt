@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
 import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.rememberLightningHaptics
 
 /**
  * Semi-sphere radial quick menu anchored above the center lightning button.
@@ -184,6 +185,7 @@ private fun QuickArcItem(
     modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
@@ -196,7 +198,10 @@ private fun QuickArcItem(
             },
     ) {
         Surface(
-            onClick = onClick,
+            onClick = {
+                haptics.click()
+                onClick()
+            },
             shape = shape,
             color = containerColor,
             contentColor = contentColor,
