@@ -1,6 +1,11 @@
 package com.lightning.browser.ui.settings
 
-import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -29,14 +34,21 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import com.lightning.browser.R
 import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.components.TonalIconButton
@@ -275,39 +287,63 @@ fun SwipeToDeleteBox(
     shape: Shape = MaterialTheme.shapes.extraSmall,
     content: @Composable () -> Unit,
 ) {
+    var isRemoved by remember { mutableStateOf(false) }
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.EndToStart) {
-                onDelete()
+                isRemoved = true
                 true
             } else {
                 false
             }
         },
     )
-    SwipeToDismissBox(
-        state = dismissState,
+    LaunchedEffect(isRemoved) {
+        if (isRemoved) {
+            delay(240L)
+            onDelete()
+        }
+    }
+    AnimatedVisibility(
+        visible = !isRemoved,
+        exit = shrinkVertically(animationSpec = tween(220)) + fadeOut(animationSpec = tween(180)),
         modifier = modifier,
-        enableDismissFromStartToEnd = false,
-        backgroundContent = {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(shape)
-                    .background(SweepColor),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier
-                        .padding(end = 20.dp)
-                        .size(20.dp),
-                )
-            }
-        },
     ) {
-        content()
+        SwipeToDismissBox(
+            state = dismissState,
+            enableDismissFromStartToEnd = false,
+            backgroundContent = {
+                val triggered = dismissState.targetValue == SwipeToDismissBoxValue.EndToStart
+                val bgColor by animateColorAsState(
+                    targetValue = if (triggered) SweepColor else SweepColor.copy(alpha = 0.72f),
+                    animationSpec = tween(150),
+                    label = "swipeBgColor",
+                )
+                val iconScale by animateFloatAsState(
+                    targetValue = if (triggered) 1.2f else 0.9f,
+                    animationSpec = tween(150),
+                    label = "swipeIconScale",
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(shape)
+                        .background(bgColor),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier
+                            .padding(end = 20.dp)
+                            .size(20.dp)
+                            .scale(iconScale),
+                    )
+                }
+            },
+        ) {
+            content()
+        }
     }
 }
