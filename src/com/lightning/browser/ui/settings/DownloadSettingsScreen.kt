@@ -1,5 +1,6 @@
 package com.lightning.browser.ui.settings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -7,22 +8,37 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Email
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.InsertDriveFile
+import androidx.compose.material.icons.outlined.OpenInBrowser
+import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,8 +46,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -43,11 +61,13 @@ import com.lightning.browser.ui.BrowserStore
 import com.lightning.browser.ui.browser.AppHandler
 import com.lightning.browser.ui.browser.AppHandlerResolver
 import com.lightning.browser.ui.components.GroupedColumn
+import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.theme.EyebrowTextStyle
 import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.rememberLightningHaptics
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DownloadSettingsScreen(
     saveFolder: BrowserStore.DownloadFolder,
@@ -206,113 +226,182 @@ fun DownloadSettingsScreen(
         val current = contentPreferences[rule.key] ?: BrowserStore.ContentPreference(rule.defaultAction)
         val handlers = remember(rule.key) { AppHandlerResolver.queryHandlers(context, rule.mimeOrScheme) }
         val defaultApp = systemDefaults[rule.key]
-        val options = buildList<RuleOption> {
-            rule.supportedActions.forEach { act ->
-                add(RuleOption.Standard(act))
-            }
-            add(RuleOption.SystemDefault(defaultApp))
-            handlers.forEach { handler ->
-                add(RuleOption.SpecificApp(handler))
-            }
-        }
-        AlertDialog(
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+        ModalBottomSheet(
             onDismissRequest = { editingRule = null },
-            title = { Text(rule.title, color = colors.onSurface) },
-            text = {
-                Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState()),
+            sheetState = sheetState,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            containerColor = colors.surfaceContainerLow,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 24.dp)
+                    .navigationBarsPadding(),
+            ) {
+                // Header with ShapedIcon, rule title, MIME/scheme subtitle, and close button
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    GroupedColumn(options.size) { i, shape ->
-                        when (val opt = options[i]) {
-                            is RuleOption.Standard -> {
-                                DialogOptionRow(
-                                    title = stringResource(opt.action.labelRes),
-                                    handler = null,
-                                    selected = current.action == opt.action && current.packageName == null,
-                                    shape = shape,
-                                    onClick = {
-                                        onContentPreferenceChange(
-                                            rule.key,
-                                            BrowserStore.ContentPreference(opt.action),
-                                        )
-                                        editingRule = null
-                                    },
-                                )
-                            }
-                            is RuleOption.SystemDefault -> {
-                                val title = if (opt.defaultApp != null) {
-                                    stringResource(R.string.dl_action_use_default_app, opt.defaultApp.label)
-                                } else {
-                                    stringResource(R.string.dl_action_use_default)
-                                }
-                                DialogOptionRow(
-                                    title = title,
-                                    handler = opt.defaultApp,
-                                    selected = current.action == BrowserStore.ContentAction.OPEN_WITH_APP &&
-                                        current.packageName == null,
-                                    shape = shape,
-                                    onClick = {
-                                        onContentPreferenceChange(
-                                            rule.key,
-                                            BrowserStore.ContentPreference(BrowserStore.ContentAction.OPEN_WITH_APP),
-                                        )
-                                        editingRule = null
-                                    },
-                                )
-                            }
-                            is RuleOption.SpecificApp -> {
-                                DialogOptionRow(
-                                    title = stringResource(R.string.dl_action_use_app, opt.handler.label),
-                                    handler = opt.handler,
-                                    selected = current.action == BrowserStore.ContentAction.OPEN_WITH_APP &&
-                                        current.packageName == opt.handler.packageName,
-                                    shape = shape,
-                                    onClick = {
-                                        onContentPreferenceChange(
-                                            rule.key,
-                                            BrowserStore.ContentPreference(
-                                                action = BrowserStore.ContentAction.OPEN_WITH_APP,
-                                                packageName = opt.handler.packageName,
-                                                className = opt.handler.className,
-                                                appLabel = opt.handler.label,
-                                            ),
-                                        )
-                                        editingRule = null
-                                    },
-                                )
-                            }
-                        }
-                    }
-                    if (handlers.isEmpty()) {
-                        Spacer(Modifier.height(8.dp))
+                    ShapedIcon(
+                        icon = ruleCategoryIcon(rule.mimeOrScheme),
+                        shape = ExpressiveShapes.Cookie9,
+                        container = colors.primaryContainer,
+                        content = colors.onPrimaryContainer,
+                        size = 44.dp,
+                        iconSize = 22.dp,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
                         Text(
-                            text = stringResource(R.string.dl_no_external_apps),
+                            text = rule.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = colors.onSurface,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = rule.mimeOrScheme,
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                    }
+                    IconButton(onClick = { editingRule = null }) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.dns_custom_cancel),
+                            tint = colors.onSurfaceVariant,
                         )
                     }
                 }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { editingRule = null }) {
-                    Text(stringResource(R.string.dns_custom_cancel), color = colors.primary)
+
+                Spacer(Modifier.height(20.dp))
+
+                // Section 1: Browser actions
+                Text(
+                    text = stringResource(R.string.dl_section_browser_actions),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.primary,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+                )
+                GroupedColumn(rule.supportedActions.size) { i, shape ->
+                    val action = rule.supportedActions[i]
+                    val selected = current.action == action && current.packageName == null
+                    ActionSheetRow(
+                        title = stringResource(action.labelRes),
+                        icon = actionIcon(action),
+                        handler = null,
+                        selected = selected,
+                        shape = shape,
+                        onClick = {
+                            onContentPreferenceChange(
+                                rule.key,
+                                BrowserStore.ContentPreference(action),
+                            )
+                            editingRule = null
+                        },
+                    )
                 }
-            },
-        )
+
+                Spacer(Modifier.height(16.dp))
+
+                // Section 2: External apps
+                Text(
+                    text = stringResource(R.string.dl_section_external_apps),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.primary,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp),
+                )
+                val appCount = 1 + handlers.size
+                GroupedColumn(appCount) { i, shape ->
+                    if (i == 0) {
+                        val defaultTitle = if (defaultApp != null) {
+                            stringResource(R.string.dl_action_use_default_app, defaultApp.label)
+                        } else {
+                            stringResource(R.string.dl_action_use_default)
+                        }
+                        val selected = current.action == BrowserStore.ContentAction.OPEN_WITH_APP &&
+                            current.packageName == null
+                        ActionSheetRow(
+                            title = defaultTitle,
+                            icon = Icons.AutoMirrored.Outlined.OpenInNew,
+                            handler = defaultApp,
+                            selected = selected,
+                            shape = shape,
+                            onClick = {
+                                onContentPreferenceChange(
+                                    rule.key,
+                                    BrowserStore.ContentPreference(BrowserStore.ContentAction.OPEN_WITH_APP),
+                                )
+                                editingRule = null
+                            },
+                        )
+                    } else {
+                        val handler = handlers[i - 1]
+                        val selected = current.action == BrowserStore.ContentAction.OPEN_WITH_APP &&
+                            current.packageName == handler.packageName
+                        ActionSheetRow(
+                            title = stringResource(R.string.dl_action_use_app, handler.label),
+                            icon = Icons.AutoMirrored.Outlined.OpenInNew,
+                            handler = handler,
+                            selected = selected,
+                            shape = shape,
+                            onClick = {
+                                onContentPreferenceChange(
+                                    rule.key,
+                                    BrowserStore.ContentPreference(
+                                        action = BrowserStore.ContentAction.OPEN_WITH_APP,
+                                        packageName = handler.packageName,
+                                        className = handler.className,
+                                        appLabel = handler.label,
+                                    ),
+                                )
+                                editingRule = null
+                            },
+                        )
+                    }
+                }
+                if (handlers.isEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = stringResource(R.string.dl_no_external_apps),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                }
+            }
+        }
     }
 }
 
-private sealed interface RuleOption {
-    data class Standard(val action: BrowserStore.ContentAction) : RuleOption
-    data class SystemDefault(val defaultApp: AppHandler?) : RuleOption
-    data class SpecificApp(val handler: AppHandler) : RuleOption
+private fun ruleCategoryIcon(mimeOrScheme: String): ImageVector = when {
+    mimeOrScheme.startsWith("image/") -> Icons.Outlined.Image
+    mimeOrScheme.contains("pdf") -> Icons.Outlined.PictureAsPdf
+    mimeOrScheme.contains("xml") -> Icons.Outlined.Code
+    mimeOrScheme.contains("mailto") -> Icons.Outlined.Email
+    mimeOrScheme.contains("/") -> Icons.Outlined.InsertDriveFile
+    else -> Icons.AutoMirrored.Outlined.OpenInNew
+}
+
+private fun actionIcon(action: BrowserStore.ContentAction): ImageVector = when (action) {
+    BrowserStore.ContentAction.SAVE_FILE -> Icons.Outlined.Download
+    BrowserStore.ContentAction.OPEN_IN_BROWSER -> Icons.Outlined.OpenInBrowser
+    BrowserStore.ContentAction.ALWAYS_ASK -> Icons.AutoMirrored.Outlined.HelpOutline
+    BrowserStore.ContentAction.OPEN_WITH_APP -> Icons.AutoMirrored.Outlined.OpenInNew
 }
 
 @Composable
-private fun DialogOptionRow(
+private fun ActionSheetRow(
     title: String,
+    icon: ImageVector,
     handler: AppHandler?,
     selected: Boolean,
     shape: Shape,
@@ -329,33 +418,50 @@ private fun DialogOptionRow(
             onClick()
         },
         shape = shape,
-        color = colors.surfaceContainer,
+        color = if (selected) colors.surfaceContainerHighest else colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 14.dp),
+                .padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
-            RadioDot(selected)
-            Spacer(Modifier.width(12.dp))
             if (iconBitmap != null) {
                 Image(
                     bitmap = iconBitmap,
                     contentDescription = null,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                )
+            } else {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (selected) colors.primary else colors.onSurfaceVariant,
                     modifier = Modifier.size(24.dp),
                 )
-                Spacer(Modifier.width(10.dp))
             }
+            Spacer(Modifier.width(14.dp))
             Text(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 color = colors.onSurface,
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (selected) {
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = colors.primary,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
         }
     }
 }
