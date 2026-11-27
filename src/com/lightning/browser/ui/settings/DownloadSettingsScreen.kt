@@ -225,10 +225,11 @@ fun DownloadSettingsScreen(
                     GroupedColumn(options.size) { i, shape ->
                         when (val opt = options[i]) {
                             is RuleOption.Standard -> {
-                                SettingsRadioRow(
+                                DialogOptionRow(
                                     title = stringResource(opt.action.labelRes),
-                                    summary = "",
+                                    handler = null,
                                     selected = current.action == opt.action && current.packageName == null,
+                                    shape = shape,
                                     onClick = {
                                         onContentPreferenceChange(
                                             rule.key,
@@ -236,7 +237,6 @@ fun DownloadSettingsScreen(
                                         )
                                         editingRule = null
                                     },
-                                    shape = shape,
                                 )
                             }
                             is RuleOption.SystemDefault -> {
@@ -245,7 +245,7 @@ fun DownloadSettingsScreen(
                                 } else {
                                     stringResource(R.string.dl_action_use_default)
                                 }
-                                AppOptionRow(
+                                DialogOptionRow(
                                     title = title,
                                     handler = opt.defaultApp,
                                     selected = current.action == BrowserStore.ContentAction.OPEN_WITH_APP &&
@@ -261,7 +261,7 @@ fun DownloadSettingsScreen(
                                 )
                             }
                             is RuleOption.SpecificApp -> {
-                                AppOptionRow(
+                                DialogOptionRow(
                                     title = stringResource(R.string.dl_action_use_app, opt.handler.label),
                                     handler = opt.handler,
                                     selected = current.action == BrowserStore.ContentAction.OPEN_WITH_APP &&
@@ -311,7 +311,7 @@ private sealed interface RuleOption {
 }
 
 @Composable
-private fun AppOptionRow(
+private fun DialogOptionRow(
     title: String,
     handler: AppHandler?,
     selected: Boolean,
@@ -329,37 +329,32 @@ private fun AppOptionRow(
             onClick()
         },
         shape = shape,
-        color = colors.surfaceContainerHigh,
+        color = colors.surfaceContainer,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 14.dp),
         ) {
+            RadioDot(selected)
+            Spacer(Modifier.width(12.dp))
             if (iconBitmap != null) {
                 Image(
                     bitmap = iconBitmap,
                     contentDescription = null,
-                    modifier = Modifier.size(28.dp),
+                    modifier = Modifier.size(24.dp),
                 )
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(10.dp))
             }
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.bodyLarge,
                 color = colors.onSurface,
                 modifier = Modifier.weight(1f),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.width(8.dp))
-            RadioButton(
-                selected = selected,
-                onClick = null,
-                colors = RadioButtonDefaults.colors(
-                    selectedColor = colors.primary,
-                    unselectedColor = colors.onSurfaceVariant,
-                ),
             )
         }
     }

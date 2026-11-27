@@ -260,7 +260,7 @@ fun SettingsRadioRow(
 }
 
 @Composable
-private fun RadioDot(selected: Boolean) {
+internal fun RadioDot(selected: Boolean) {
     val colors = LightningTheme.colors
     Box(
         modifier = Modifier
