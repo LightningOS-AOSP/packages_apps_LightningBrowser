@@ -10,6 +10,8 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.net.Uri
 import android.os.Build
+import android.print.PrintAttributes
+import android.print.PrintManager
 import android.provider.Settings
 import android.webkit.CookieManager
 import android.webkit.WebStorage
@@ -376,6 +378,19 @@ fun LightningBrowserRoot(
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("url", url))
         Toast.makeText(context, R.string.menu_copy_url_copied, Toast.LENGTH_SHORT).show()
+    }
+
+    fun printCurrentPage() {
+        val webView = webViews[activeIndex] ?: return
+        val printManager = context.getSystemService(Context.PRINT_SERVICE) as? PrintManager ?: return
+        val jobName = tabs.getOrNull(activeIndex)?.title
+            ?.takeIf { it.isNotBlank() }
+            ?: context.getString(R.string.app_name)
+        printManager.print(
+            jobName,
+            webView.createPrintDocumentAdapter(jobName),
+            PrintAttributes.Builder().build(),
+        )
     }
 
     fun shareUrl() {
@@ -801,6 +816,7 @@ fun LightningBrowserRoot(
                         tabs[activeIndex] = tab.copy(desktopMode = !tab.desktopMode)
                     }
                 },
+                onPrint = { printCurrentPage() },
                 onIncognito = { context.startActivity(Intent(context, IncognitoActivity::class.java)) },
                 incognito = incognito,
                 copyUrlVisible = screen == LightningScreen.BROWSER &&

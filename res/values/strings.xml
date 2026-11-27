@@ -37,6 +37,7 @@
     <string name="menu_copy_url_copied">URL copied to clipboard</string>
     <string name="menu_find_in_page">Find in page</string>
     <string name="menu_desktop_site">Desktop site</string>
+    <string name="menu_print">Print</string>
     <string name="find_in_page_placeholder">Find in page</string>
     <string name="find_in_page_prev">Previous match</string>
     <string name="find_in_page_next">Next match</string>
