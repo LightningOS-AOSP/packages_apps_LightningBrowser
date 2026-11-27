@@ -85,6 +85,7 @@ import com.lightning.browser.IncognitoActivity
 import com.lightning.browser.R
 import com.lightning.browser.ui.BrowserStore
 import com.lightning.browser.ui.bar.LightningBottomBar
+import com.lightning.browser.ui.bar.QuickArcMenu
 import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.browser.BrowserScreen
@@ -218,6 +219,8 @@ fun LightningBrowserRoot(
         mutableStateListOf<PinnedSite>().apply { if (!incognito) addAll(BrowserStore.loadPinnedSites(context)) }
     }
     var showMenu by remember { mutableStateOf(false) }
+    var showQuickArc by remember { mutableStateOf(false) }
+    var tabsReturnScreen by remember { mutableStateOf(LightningScreen.HOME) }
     var pendingBookmarkTab by remember { mutableStateOf<BrowserTab?>(null) }
     var authError by remember { mutableStateOf(false) }
     var locked by remember { mutableStateOf(BrowserStore.loadFingerprintLock(context)) }
@@ -440,7 +443,11 @@ fun LightningBrowserRoot(
         }
     }
 
-    BackHandler(enabled = screen != LightningScreen.HOME) {
+    BackHandler(enabled = showQuickArc) {
+        showQuickArc = false
+    }
+
+    BackHandler(enabled = !showQuickArc && screen != LightningScreen.HOME) {
         when (screen) {
             LightningScreen.BROWSER -> {
                 val view = webViews[activeIndex]
@@ -685,11 +692,21 @@ fun LightningBrowserRoot(
                         backEnabled = navStates[activeIndex]?.canGoBack == true,
                         forwardEnabled = navStates[activeIndex]?.canGoForward == true,
                         onNewTab = {
-                            if (screen == LightningScreen.BROWSER) {
-                                captureTabThumbnail(activeIndex)
+                            if (screen != LightningScreen.TABS) {
+                                tabsReturnScreen = screen
+                                if (screen == LightningScreen.BROWSER) {
+                                    captureTabThumbnail(activeIndex)
+                                }
+                                screen = LightningScreen.TABS
+                            } else {
+                                screen = if (tabsReturnScreen == LightningScreen.BROWSER && tabs.isNotEmpty()) {
+                                    LightningScreen.BROWSER
+                                } else {
+                                    LightningScreen.HOME
+                                }
                             }
-                            screen = LightningScreen.TABS
                         },
+                        onLightningLongClick = { showQuickArc = true },
                         onBookmark = {
                             val tab = tabs.getOrNull(activeIndex)
                             if (screen == LightningScreen.BROWSER && tab != null &&
@@ -704,6 +721,35 @@ fun LightningBrowserRoot(
                     )
                 }
             }
+            QuickArcMenu(
+                visible = showQuickArc,
+                onDismiss = { showQuickArc = false },
+                onHome = {
+                    showQuickArc = false
+                    if (screen == LightningScreen.BROWSER) {
+                        captureTabThumbnail(activeIndex)
+                    }
+                    screenBackStack.clear()
+                    screen = LightningScreen.HOME
+                },
+                onTabs = {
+                    showQuickArc = false
+                    if (screen != LightningScreen.TABS) {
+                        tabsReturnScreen = screen
+                        if (screen == LightningScreen.BROWSER) {
+                            captureTabThumbnail(activeIndex)
+                        }
+                        screen = LightningScreen.TABS
+                    }
+                },
+                onSettings = {
+                    showQuickArc = false
+                    if (screen == LightningScreen.BROWSER) {
+                        captureTabThumbnail(activeIndex)
+                    }
+                    navigateTo(LightningScreen.SETTINGS)
+                },
+            )
             AppMenuSheet(
                 visible = showMenu,
                 onHide = { showMenu = false },

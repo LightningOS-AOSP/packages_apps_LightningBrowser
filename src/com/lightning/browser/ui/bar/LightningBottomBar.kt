@@ -33,6 +33,7 @@ fun LightningBottomBar(
     onBookmark: () -> Unit = {},
     onMenu: () -> Unit = {},
     onNewTab: () -> Unit = {},
+    onLightningLongClick: () -> Unit = {},
     backEnabled: Boolean = false,
     forwardEnabled: Boolean = false,
 ) {
@@ -70,7 +71,12 @@ fun LightningBottomBar(
                     stringResource(R.string.bar_bookmark),
                     onBookmark,
                 )
-                MorphButton(onNewTab, stringResource(R.string.bar_new_tab), size = 60.dp)
+                MorphButton(
+                    onClick = onNewTab,
+                    contentDescription = stringResource(R.string.bar_new_tab),
+                    size = 60.dp,
+                    onLongClick = onLightningLongClick,
+                )
                 TonalIconButton(
                     Icons.Filled.MoreVert,
                     stringResource(R.string.bar_menu),

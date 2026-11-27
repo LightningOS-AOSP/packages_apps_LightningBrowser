@@ -2,9 +2,11 @@ package com.lightning.browser.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -24,6 +26,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -69,6 +73,7 @@ fun ShapedIcon(
 }
 
 /** Shape-morphing primary button: cookie at rest, circle + 40deg twist while pressed. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MorphButton(
     onClick: () -> Unit,
@@ -79,7 +84,9 @@ fun MorphButton(
     container: Color = LightningTheme.colors.primary,
     content: Color = LightningTheme.colors.onPrimary,
     lobes: Int = 9,
+    onLongClick: (() -> Unit)? = null,
 ) {
+    val haptics = LocalHapticFeedback.current
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val amp by animateFloatAsState(
@@ -98,11 +105,17 @@ fun MorphButton(
             .pressScale(source)
             .clip(LobedShape(lobes, amp.coerceAtLeast(0f), rot))
             .background(container)
-            .clickable(
+            .combinedClickable(
                 interactionSource = source,
                 indication = LocalIndication.current,
                 role = Role.Button,
                 onClick = onClick,
+                onLongClick = onLongClick?.let { callback ->
+                    {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        callback()
+                    }
+                },
             ),
         contentAlignment = Alignment.Center,
     ) {

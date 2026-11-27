@@ -197,4 +197,8 @@
     <string name="history_empty">No browsing history</string>
     <string name="history_group_lastweek">Last week</string>
     <string name="history_group_older">Older</string>
+
+    <string name="quick_arc_home">Home</string>
+    <string name="quick_arc_tabs">All tabs</string>
+    <string name="quick_arc_settings">Settings</string>
 </resources>
