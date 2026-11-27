@@ -123,6 +123,7 @@ fun BrowserScreen(
     onBlocked: () -> Unit = {},
     onDnsResolved: () -> Unit = {},
     focusSignal: Int = 0,
+    onFocusConsumed: () -> Unit = {},
     chromeVisible: Boolean = true,
     onChromeVisibleChange: (Boolean) -> Unit = {},
     recentSearches: List<String> = emptyList(),
@@ -136,8 +137,8 @@ fun BrowserScreen(
 ) {
     val activeTab = tabs.getOrNull(activeIndex)
     val keyboard = LocalSoftwareKeyboardController.current
-    var editing by rememberSaveable(activeIndex) { mutableStateOf(false) }
-    var query by rememberSaveable(activeIndex) { mutableStateOf("") }
+    var editing by remember(activeIndex) { mutableStateOf(false) }
+    var query by remember(activeIndex) { mutableStateOf("") }
     val progress = remember { mutableStateMapOf<Int, Int>() }
     val scrollAccumulator = remember { intArrayOf(0) }
     val lastToggle = remember { longArrayOf(0L) }
@@ -168,10 +169,11 @@ fun BrowserScreen(
         }
     }
 
-    LaunchedEffect(focusSignal, activeIndex) {
+    LaunchedEffect(focusSignal) {
         if (focusSignal > 0) {
             editing = true
             query = ""
+            onFocusConsumed()
         }
     }
 

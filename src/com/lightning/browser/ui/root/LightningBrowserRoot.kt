@@ -471,6 +471,7 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                         onBlocked = { blockedCount++ },
                         onDnsResolved = { dnsResolvedCount++ },
                         focusSignal = addressFocusSignal,
+                        onFocusConsumed = { addressFocusSignal = 0 },
                         chromeVisible = chromeVisible,
                         onChromeVisibleChange = { chromeVisible = it },
                         recentSearches = recentSearches,
