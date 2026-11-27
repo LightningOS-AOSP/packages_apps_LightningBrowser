@@ -95,9 +95,11 @@ import com.lightning.browser.ui.bar.LightningBottomBar
 import com.lightning.browser.ui.bar.QuickArcMenu
 import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.components.ShapedIcon
+import com.lightning.browser.ui.browser.AppHandlerResolver
 import com.lightning.browser.ui.browser.BrowserDownloads
 import com.lightning.browser.ui.browser.BrowserScreen
 import com.lightning.browser.ui.browser.ClipboardUrlHelper
+import com.lightning.browser.ui.browser.PdfViewerScreen
 import com.lightning.browser.ui.browser.PrintScreen
 import com.lightning.browser.ui.browser.TabNavState
 import com.lightning.browser.ui.home.HomeScreen
@@ -147,7 +149,7 @@ data class DuplicateTabWarning(
 )
 
 enum class LightningScreen {
-    HOME, TABS, SAVED_PAGES, RECENTLY_CLOSED, PRINT, SETTINGS, APPEARANCE, CONTROLS, BROWSING, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, DOWNLOAD_SETTINGS, ABOUT, BOOKMARKS, HISTORY,
+    HOME, TABS, SAVED_PAGES, RECENTLY_CLOSED, PRINT, PDF_VIEWER, SETTINGS, APPEARANCE, CONTROLS, BROWSING, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, DOWNLOAD_SETTINGS, ABOUT, BOOKMARKS, HISTORY,
     SITE_PERMISSIONS, BROWSER, STARTUP
 }
 
@@ -324,12 +326,16 @@ fun LightningBrowserRoot(
     var askBeforeDownload by remember { mutableStateOf(BrowserStore.loadDownloadAskBefore(context)) }
     var deletePrivateDownloads by remember { mutableStateOf(BrowserStore.loadDeletePrivateDownloads(context)) }
     var otherFilesAsk by remember { mutableStateOf(BrowserStore.loadDownloadOtherAsk(context)) }
-    val contentActions = remember {
-        mutableStateMapOf<String, BrowserStore.ContentAction>().apply {
-            putAll(BrowserStore.loadContentActions(context))
+    val contentPreferences = remember {
+        mutableStateMapOf<String, BrowserStore.ContentPreference>().apply {
+            putAll(BrowserStore.loadContentPreferences(context))
         }
     }
     val privateDownloadedFiles = remember { mutableStateListOf<String>() }
+    var pdfTitle by remember { mutableStateOf("") }
+    var pdfFile by remember { mutableStateOf<java.io.File?>(null) }
+    var pdfLoading by remember { mutableStateOf(false) }
+    var pdfError by remember { mutableStateOf(false) }
     var blockedCount by remember { mutableIntStateOf(0) }
     var dnsResolvedCount by remember { mutableIntStateOf(0) }
 
@@ -997,6 +1003,11 @@ fun LightningBrowserRoot(
             LightningScreen.SITE_PERMISSIONS -> navigateBack(LightningScreen.PRIVACY)
             LightningScreen.SAVED_PAGES, LightningScreen.RECENTLY_CLOSED -> navigateBack(LightningScreen.TABS)
             LightningScreen.PRINT -> navigateBack(LightningScreen.BROWSER)
+            LightningScreen.PDF_VIEWER -> {
+                pdfFile?.let { runCatching { it.delete() } }
+                pdfFile = null
+                navigateBack(LightningScreen.BROWSER)
+            }
             else -> navigateBack(LightningScreen.SETTINGS)
         }
     }
@@ -1136,6 +1147,22 @@ fun LightningBrowserRoot(
                                 privateDownloadedFiles.add(name)
                             }
                         },
+                        onOpenPdf = { url, userAgent, title ->
+                            pdfFile?.let { runCatching { it.delete() } }
+                            pdfTitle = title
+                            pdfFile = null
+                            pdfLoading = true
+                            pdfError = false
+                            navigateTo(LightningScreen.PDF_VIEWER)
+                            BrowserDownloads.downloadToCacheFile(context, url, userAgent, title) { file ->
+                                pdfLoading = false
+                                if (file != null) {
+                                    pdfFile = file
+                                } else {
+                                    pdfError = true
+                                }
+                            }
+                        },
                         onBackHome = {
                             captureTabThumbnail(activeIndex)
                             screen = LightningScreen.HOME
@@ -1268,6 +1295,41 @@ fun LightningBrowserRoot(
                         onSavePdf = { mediaSize, mono, pages -> savePageAsPdf(mediaSize, mono, pages) },
                         onPrint = { attrs -> printCurrentPage(attrs) },
                     )
+                    LightningScreen.PDF_VIEWER -> PdfViewerScreen(
+                        title = pdfTitle,
+                        pdfFile = pdfFile,
+                        isLoading = pdfLoading,
+                        loadError = pdfError,
+                        onSaveToDownloads = {
+                            val file = pdfFile ?: return@PdfViewerScreen
+                            val name = pdfTitle.ifBlank { "document.pdf" }
+                            BrowserDownloads.saveCachedFileToDownloads(context, name, "application/pdf", file) { ok ->
+                                if (ok && incognito) privateDownloadedFiles.add(name)
+                                val msg = if (ok) {
+                                    context.getString(R.string.pdf_viewer_saved, name)
+                                } else {
+                                    context.getString(R.string.menu_save_offline_failed)
+                                }
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onOpenExternal = {
+                            val file = pdfFile ?: return@PdfViewerScreen
+                            val pref = contentPreferences["pdf"]
+                            AppHandlerResolver.launchFile(
+                                context,
+                                file,
+                                "application/pdf",
+                                pref?.packageName,
+                                pref?.className,
+                            )
+                        },
+                        onBack = {
+                            pdfFile?.let { runCatching { it.delete() } }
+                            pdfFile = null
+                            navigateBack(LightningScreen.BROWSER)
+                        },
+                    )
                     LightningScreen.BROWSER -> Unit
                     LightningScreen.SETTINGS -> SettingsRootScreen(
                         startupBehavior = startupBehavior,
@@ -1317,14 +1379,14 @@ fun LightningBrowserRoot(
                         askBeforeDownload = askBeforeDownload,
                         deletePrivateOnClose = deletePrivateDownloads,
                         otherFilesAsk = otherFilesAsk,
-                        contentActions = contentActions,
+                        contentPreferences = contentPreferences,
                         onSaveFolderChange = { downloadFolder = it },
                         onAskBeforeDownloadChange = { askBeforeDownload = it },
                         onDeletePrivateOnCloseChange = { deletePrivateDownloads = it },
                         onOtherFilesAskChange = { otherFilesAsk = it },
-                        onContentActionChange = { key, action ->
-                            contentActions[key] = action
-                            if (!incognito) BrowserStore.saveContentAction(context, key, action)
+                        onContentPreferenceChange = { key, pref ->
+                            contentPreferences[key] = pref
+                            if (!incognito) BrowserStore.saveContentPreference(context, key, pref)
                         },
                         onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )

@@ -251,6 +251,7 @@ fun BrowserScreen(
     clipboardPromptEnabled: Boolean = true,
     waybackEnabled: Boolean = true,
     onDownloadSaved: (String) -> Unit = {},
+    onOpenPdf: (url: String, userAgent: String?, title: String) -> Unit = { _, _, _ -> },
     onBackHome: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -389,24 +390,44 @@ fun BrowserScreen(
 
     fun startDownload(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) {
         val fileName = BrowserDownloads.fileNameFrom(contentDisposition, url, mimeType)
-        val action = BrowserDownloads.resolveActionForDownload(context, url, mimeType, fileName)
-        when (action) {
-            BrowserStore.ContentAction.OPEN_WITH_APP -> {
-                val opened = runCatching {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val pref = BrowserDownloads.resolvePreferenceForDownload(context, url, mimeType, fileName)
+        val isPdf = mimeType?.contains("pdf", ignoreCase = true) == true ||
+            fileName.endsWith(".pdf", ignoreCase = true)
+        val effectiveMime = mimeType?.takeIf { it.isNotBlank() && it != "application/octet-stream" }
+            ?: BrowserDownloads.mimeTypeFromFileName(fileName)
+            ?: "*/*"
+        when (pref.action) {
+            BrowserStore.ContentAction.OPEN_IN_BROWSER -> {
+                if (isPdf) {
+                    onOpenPdf(url, userAgent, fileName)
+                } else {
+                    BrowserDownloads.downloadToCacheFile(context, url, userAgent, fileName) { file ->
+                        if (file != null) {
+                            webViews[activeIndex]?.loadUrl(Uri.fromFile(file).toString())
+                        } else {
+                            proceedDownload(url, userAgent, contentDisposition, mimeType)
+                        }
                     }
-                    context.startActivity(intent)
-                    true
-                }.getOrDefault(false)
-                if (!opened) {
-                    proceedDownload(url, userAgent, contentDisposition, mimeType)
+                }
+            }
+            BrowserStore.ContentAction.OPEN_WITH_APP -> {
+                BrowserDownloads.downloadToCacheFile(context, url, userAgent, fileName) { file ->
+                    val opened = file != null && AppHandlerResolver.launchFile(
+                        context,
+                        file,
+                        effectiveMime,
+                        pref.packageName,
+                        pref.className,
+                    )
+                    if (!opened) {
+                        proceedDownload(url, userAgent, contentDisposition, mimeType)
+                    }
                 }
             }
             BrowserStore.ContentAction.ALWAYS_ASK -> {
                 downloadConfirmPrompt = PendingDownload(url, userAgent, contentDisposition, mimeType)
             }
-            else -> {
+            BrowserStore.ContentAction.SAVE_FILE -> {
                 if (BrowserStore.loadDownloadAskBefore(context)) {
                     downloadConfirmPrompt = PendingDownload(url, userAgent, contentDisposition, mimeType)
                 } else {
@@ -907,13 +928,23 @@ fun BrowserScreen(
             },
             confirmButton = {
                 Row {
-                    if (pending.url.startsWith("http", ignoreCase = true)) {
+                    if (pending.url.startsWith("http", ignoreCase = true) || pending.url.startsWith("data:", ignoreCase = true)) {
                         TextButton(onClick = {
+                            val name = draftName.trim().ifEmpty { initialName }
+                            val isPdf = pending.mimeType?.contains("pdf", ignoreCase = true) == true ||
+                                name.endsWith(".pdf", ignoreCase = true)
                             downloadConfirmPrompt = null
-                            runCatching {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(pending.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                                )
+                            if (isPdf) {
+                                onOpenPdf(pending.url, pending.userAgent, name)
+                            } else {
+                                val effectiveMime = pending.mimeType?.takeIf {
+                                    it.isNotBlank() && it != "application/octet-stream"
+                                } ?: BrowserDownloads.mimeTypeFromFileName(name) ?: "*/*"
+                                BrowserDownloads.downloadToCacheFile(context, pending.url, pending.userAgent, name) { file ->
+                                    if (file != null) {
+                                        AppHandlerResolver.launchFile(context, file, effectiveMime)
+                                    }
+                                }
                             }
                         }) {
                             Text(stringResource(R.string.dl_prompt_open), color = colors.primary)
@@ -957,11 +988,8 @@ fun BrowserScreen(
             confirmButton = {
                 TextButton(onClick = {
                     mailtoPromptUri = null
-                    runCatching {
-                        context.startActivity(
-                            Intent(Intent.ACTION_SENDTO, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                        )
-                    }
+                    val pref = BrowserStore.loadContentPreferences(context)["mailto"]
+                    AppHandlerResolver.launchMailto(context, uri, pref?.packageName, pref?.className)
                 }) {
                     Text(stringResource(R.string.dl_prompt_open), color = colors.primary)
                 }
@@ -1880,16 +1908,11 @@ private fun BrowserPage(
                     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                         val target = request?.url ?: return false
                         if (target.scheme.equals("mailto", ignoreCase = true)) {
-                            val mailtoAction = BrowserStore.loadContentActions(context)["mailto"]
-                                ?: BrowserStore.ContentAction.OPEN_WITH_APP
-                            if (mailtoAction == BrowserStore.ContentAction.ALWAYS_ASK) {
+                            val pref = BrowserStore.loadContentPreferences(context)["mailto"]
+                            if (pref?.action == BrowserStore.ContentAction.ALWAYS_ASK) {
                                 view?.post { config.onMailtoPrompt(target) }
                             } else {
-                                runCatching {
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_SENDTO, target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                                    )
-                                }
+                                AppHandlerResolver.launchMailto(context, target, pref?.packageName, pref?.className)
                             }
                             return true
                         }
