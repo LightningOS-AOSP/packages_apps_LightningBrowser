@@ -38,4 +38,5 @@ class WebConfig(
     var onDuplicateBlob: (String, String, String, File) -> Unit = { _, _, _, _ -> }
     var onBlocked: () -> Unit = {}
     var onDnsResolved: () -> Unit = {}
+    var onHttpError: (url: String, statusCode: Int) -> Unit = { _, _ -> }
 }

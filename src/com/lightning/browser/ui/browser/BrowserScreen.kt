@@ -54,6 +54,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -160,6 +161,7 @@ fun BrowserScreen(
     var pendingDownload by remember { mutableStateOf<PendingDownload?>(null) }
     var duplicateDownload by remember { mutableStateOf<DuplicateDownloadPrompt?>(null) }
     var downloadPopup by remember { mutableStateOf<DownloadPopupState?>(null) }
+    var waybackSnapshot by remember(activeIndex) { mutableStateOf<WaybackSnapshot?>(null) }
     val dnsEndpoint = remember(dnsProvider, customDnsUrl) {
         DohResolver.endpointFor(dnsProvider, customDnsUrl)
     }
@@ -336,6 +338,15 @@ fun BrowserScreen(
                     },
                     onBlocked = onBlocked,
                     onDnsResolved = onDnsResolved,
+                    onHttpError = { failedUrl, statusCode ->
+                        if (statusCode in listOf(404, 410, 502, 504)) {
+                            WaybackResolver.checkAvailability(failedUrl) { result ->
+                                if (result != null && (activeTab?.url == failedUrl || loadedUrls[activeIndex] == failedUrl)) {
+                                    waybackSnapshot = result
+                                }
+                            }
+                        }
+                    },
                     modifier = Modifier.fillMaxSize(),
                 )
             } else {
@@ -368,6 +379,35 @@ fun BrowserScreen(
             }
             if (activeProgress < 100 && !editing) {
                 LightningLoadingIndicator(Modifier.fillMaxSize())
+            }
+            androidx.compose.animation.AnimatedVisibility(
+                visible = waybackSnapshot != null && downloadPopup == null,
+                enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
+                exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(180)),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+            ) {
+                waybackSnapshot?.let { snapshot ->
+                    WaybackPromptBanner(
+                        snapshot = snapshot,
+                        onLoadSnapshot = {
+                            waybackSnapshot = null
+                            if (activeTab != null) {
+                                loadedUrls[activeIndex] = snapshot.snapshotUrl
+                                onUpdateTab(
+                                    activeIndex,
+                                    activeTab.copy(
+                                        url = snapshot.snapshotUrl,
+                                        domain = hostOf(snapshot.snapshotUrl),
+                                    ),
+                                )
+                                webViews[activeIndex]?.loadUrl(snapshot.snapshotUrl)
+                            }
+                        },
+                        onDismiss = { waybackSnapshot = null },
+                    )
+                }
             }
             androidx.compose.animation.AnimatedVisibility(
                 visible = downloadPopup != null,
@@ -438,6 +478,84 @@ fun BrowserScreen(
                 duplicateDownload = null
             },
         )
+    }
+}
+
+@Composable
+private fun WaybackPromptBanner(
+    snapshot: WaybackSnapshot,
+    onLoadSnapshot: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = colors.surfaceContainerHigh,
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            ShapedIcon(
+                icon = Icons.Filled.History,
+                shape = ExpressiveShapes.Cookie9,
+                container = colors.tertiaryContainer,
+                content = colors.onTertiaryContainer,
+                size = 44.dp,
+                iconSize = 22.dp,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.wayback_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = if (snapshot.formattedDate.isNotEmpty()) {
+                        stringResource(R.string.wayback_message_with_date, snapshot.formattedDate)
+                    } else {
+                        stringResource(R.string.wayback_message)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Button(
+                onClick = onLoadSnapshot,
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.primary,
+                    contentColor = colors.onPrimary,
+                ),
+            ) {
+                Text(
+                    text = stringResource(R.string.wayback_load_action),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = null,
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
     }
 }
 
@@ -881,6 +999,7 @@ private fun BrowserPage(
     onDuplicateBlob: (String, String, String, File) -> Unit,
     onBlocked: () -> Unit,
     onDnsResolved: () -> Unit,
+    onHttpError: (String, Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
@@ -1032,6 +1151,9 @@ private fun BrowserPage(
                             )
                         }
                         Log.d("LightningDoH", "served $host via pinned TLS")
+                        if (request.isForMainFrame && response.statusCode in listOf(404, 410, 502, 504)) {
+                            config.onHttpError(url.toString(), response.statusCode)
+                        }
                         if (response.statusCode >= 400 && response.body.isEmpty()) return null
                         val (mime, charset) = parseContentType(response.headers["content-type"])
                         return WebResourceResponse(
@@ -1066,6 +1188,18 @@ private fun BrowserPage(
                         url?.let { config.onUrlChange(it) }
                         view?.evaluateJavascript(DOWNLOAD_INTERCEPT_SCRIPT, null)
                         if (config.adBlocking) view?.evaluateJavascript(CosmeticFilter.SCRIPT, null)
+                    }
+
+                    override fun onReceivedHttpError(
+                        view: WebView?,
+                        request: WebResourceRequest?,
+                        errorResponse: WebResourceResponse?,
+                    ) {
+                        super.onReceivedHttpError(view, request, errorResponse)
+                        if (request?.isForMainFrame == true && errorResponse != null) {
+                            val reqUrl = request.url?.toString().orEmpty()
+                            config.onHttpError(reqUrl, errorResponse.statusCode)
+                        }
                     }
 
                     override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
@@ -1112,6 +1246,7 @@ private fun BrowserPage(
                 config.onDuplicateBlob = onDuplicateBlob
                 config.onBlocked = onBlocked
                 config.onDnsResolved = onDnsResolved
+                config.onHttpError = onHttpError
             }
             wv.onResume()
             onNavChange(wv.canGoBack(), wv.canGoForward())
