@@ -6,6 +6,7 @@
     <string name="browser_suggestion_search">Search for “%1$s”</string>
     <string name="browser_clear_query">Clear</string>
     <string name="browser_refresh">Refresh</string>
+    <string name="browser_reading_time">~%1$d min read</string>
     <string name="browser_loading">Loading</string>
     <string name="home_recent_header">RECENT</string>
     <string name="home_search_mic">Voice search</string>

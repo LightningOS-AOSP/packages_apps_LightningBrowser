@@ -36,6 +36,7 @@ class WebConfig(
     var onUrlChange: (String) -> Unit = {}
     var onDuplicateCheckCandidate: (String) -> Unit = {}
     var onPageMeta: (String, String, String) -> Unit = { _, _, _ -> }
+    var onReadingTime: (ReadingTime?) -> Unit = {}
     var onDownload: (String, String?, String?, String?) -> Unit = { _, _, _, _ -> }
     var onDownloadStart: (String) -> Unit = {}
     var onDownloadComplete: (String) -> Unit = {}

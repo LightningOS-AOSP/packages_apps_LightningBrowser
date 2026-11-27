@@ -65,6 +65,7 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.NorthWest
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Tab
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -257,6 +258,7 @@ fun BrowserScreen(
     var findActiveMatch by remember(activeIndex) { mutableIntStateOf(0) }
     var findTotalMatches by remember(activeIndex) { mutableIntStateOf(0) }
     val progress = remember { mutableStateMapOf<Int, Int>() }
+    val readingTimes = remember { mutableStateMapOf<String, ReadingTime?>() }
     val scrollAccumulator = remember { intArrayOf(0) }
     val lastToggle = remember { longArrayOf(0L) }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -460,6 +462,7 @@ fun BrowserScreen(
                 }
             },
             onRefresh = { webViews[activeIndex]?.reload() },
+            readingMinutes = activeTab?.id?.let { readingTimes[it]?.minutes },
         )
         }
         }
@@ -537,6 +540,9 @@ fun BrowserScreen(
                             webViews = webViews,
                             loadedUrls = loadedUrls,
                             onProgress = { progress[idx] = it },
+                            onReadingTime = { estimate ->
+                                readingTimes[tab.id] = estimate
+                            },
                             onNavChange = { back, forward ->
                                 val next = TabNavState(back, forward)
                                 if (navStates[idx] != next) navStates[idx] = next
@@ -1491,6 +1497,7 @@ private fun BrowserPage(
     webViews: SnapshotStateMap<Int, WebView>,
     loadedUrls: SnapshotStateMap<Int, String>,
     onProgress: (Int) -> Unit,
+    onReadingTime: (ReadingTime?) -> Unit,
     onNavChange: (Boolean, Boolean) -> Unit,
     onUrlChange: (String) -> Unit,
     onDuplicateCheckCandidate: (String) -> Unit,
@@ -1708,6 +1715,7 @@ private fun BrowserPage(
 
                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                         super.onPageStarted(view, url, favicon)
+                        config.onReadingTime(null)
                         url?.let { config.onUrlChange(it) }
                         config.onNavChange(view?.canGoBack() ?: false, view?.canGoForward() ?: false)
                         if (config.desktopMode && view != null) {
@@ -1751,6 +1759,23 @@ private fun BrowserPage(
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
+                        val pageUrl = url
+                        if (view != null && pageUrl != null) {
+                            fun measure(retry: Boolean) {
+                                if (view.url != pageUrl) return
+                                view.evaluateJavascript(ReadingTimeEstimator.SCRIPT) { raw ->
+                                    if (view.url != pageUrl) return@evaluateJavascript
+                                    val estimate = ReadingTimeEstimator.parse(raw)
+                                    if (estimate != null) {
+                                        config.onReadingTime(estimate)
+                                    } else if (retry) {
+                                        // Give SPAs and lazy-loaded articles one more chance.
+                                        view.postDelayed({ measure(false) }, 1_800L)
+                                    }
+                                }
+                            }
+                            view.postDelayed({ measure(true) }, 700L)
+                        }
                         if (config.desktopMode && view != null) {
                             view.evaluateJavascript(desktopViewportScript(view), null)
                         }
@@ -1803,6 +1828,7 @@ private fun BrowserPage(
                 config.dnsEndpoint = dnsEndpoint
                 config.bypassTrusted = bypassTrusted
                 config.onProgress = onProgress
+                config.onReadingTime = onReadingTime
                 config.onNavChange = onNavChange
                 config.onScrolled = onScrolled
                 config.onUrlChange = onUrlChange
@@ -1915,6 +1941,7 @@ private fun UrlRow(
     onCancel: () -> Unit,
     onSubmit: () -> Unit,
     onRefresh: () -> Unit,
+    readingMinutes: Int? = null,
 ) {
     val colors = LightningTheme.colors
     val focusRequester = remember { FocusRequester() }
@@ -2019,6 +2046,33 @@ private fun UrlRow(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
+                    if (readingMinutes != null) {
+                        Surface(
+                            color = colors.primaryContainer,
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.height(30.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 10.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Schedule,
+                                    contentDescription = null,
+                                    tint = colors.onPrimaryContainer,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = stringResource(R.string.browser_reading_time, readingMinutes),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = colors.onPrimaryContainer,
+                                    maxLines = 1,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(4.dp))
+                    }
                     if (address.isNotEmpty()) {
                         TonalIconButton(
                             Icons.Filled.Refresh,
