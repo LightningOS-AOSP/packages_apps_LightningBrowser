@@ -13,6 +13,15 @@
     <string name="home_pinned_add">Add pinned site slot</string>
 
     <string name="tabs_title">Tabs</string>
+    <string name="tabs_more">More options</string>
+    <string name="saved_pages_title">Saved pages</string>
+    <string name="tabs_search_hint">Search tabs</string>
+    <string name="tabs_saved_search_hint">Search saved pages</string>
+    <string name="tabs_empty">No tabs yet</string>
+    <string name="tabs_search_empty">No matching tabs</string>
+    <string name="tabs_saved_empty">No saved pages</string>
+    <string name="tabs_saved_search_empty">No matching saved pages</string>
+    <string name="tabs_delete_saved">Delete saved page</string>
     <string name="tabs_close_all">CLOSE ALL</string>
     <string name="tabs_close_all_confirm_title">Close all open tabs?</string>
     <string name="tabs_close_all_confirm_message">All open tabs will be closed. This cannot be undone.</string>

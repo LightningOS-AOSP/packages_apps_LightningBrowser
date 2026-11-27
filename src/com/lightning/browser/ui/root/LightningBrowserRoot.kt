@@ -116,6 +116,7 @@ import com.lightning.browser.ui.settings.SitePermissionsScreen
 import com.lightning.browser.ui.settings.StartupBehavior
 import com.lightning.browser.ui.settings.StartupScreen
 import com.lightning.browser.ui.tabs.BrowserTab
+import com.lightning.browser.ui.tabs.SavedPagesScreen
 import com.lightning.browser.ui.tabs.TabSwitcherScreen
 import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
@@ -125,7 +126,7 @@ import com.lightning.browser.ui.theme.rememberLightningHaptics
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 enum class LightningScreen {
-    HOME, TABS, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT, BOOKMARKS, HISTORY,
+    HOME, TABS, SAVED_PAGES, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT, BOOKMARKS, HISTORY,
     SITE_PERMISSIONS, BROWSER, STARTUP
 }
 
@@ -517,6 +518,7 @@ fun LightningBrowserRoot(
                 navigateBack(LightningScreen.HOME)
             }
             LightningScreen.SITE_PERMISSIONS -> navigateBack(LightningScreen.PRIVACY)
+            LightningScreen.SAVED_PAGES -> navigateBack(LightningScreen.TABS)
             else -> navigateBack(LightningScreen.SETTINGS)
         }
     }
@@ -663,6 +665,9 @@ fun LightningBrowserRoot(
                             activeIndex = it
                             screen = LightningScreen.BROWSER
                         },
+                    )
+                    LightningScreen.SAVED_PAGES -> SavedPagesScreen(
+                        onBack = { navigateBack(LightningScreen.TABS) },
                     )
                     LightningScreen.BROWSER -> Unit
                     LightningScreen.SETTINGS -> SettingsRootScreen(
@@ -845,6 +850,7 @@ fun LightningBrowserRoot(
                 incognito = incognito,
                 copyUrlVisible = screen == LightningScreen.BROWSER &&
                     tabs.getOrNull(activeIndex)?.url?.isNotEmpty() == true,
+                savedPagesVisible = screen == LightningScreen.TABS,
                 onOpen = {
                     showMenu = false
                     navigateTo(it)

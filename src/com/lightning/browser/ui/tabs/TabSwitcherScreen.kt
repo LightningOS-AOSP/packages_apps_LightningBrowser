@@ -22,23 +22,27 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.TabUnselected
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -75,6 +80,7 @@ fun TabSwitcherScreen(
     val colors = LightningTheme.colors
     val haptics = rememberLightningHaptics()
     var showCloseAllConfirm by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
 
     if (showCloseAllConfirm) {
         CloseAllTabsConfirmDialog(
@@ -85,6 +91,16 @@ fun TabSwitcherScreen(
                 onCloseAll()
             },
         )
+    }
+
+    val queryTrimmed = searchQuery.trim()
+    val filteredTabs = remember(tabs.toList(), queryTrimmed) {
+        tabs.mapIndexed { idx, tab -> idx to tab }.filter { (_, tab) ->
+            queryTrimmed.isEmpty() ||
+                tab.title.contains(queryTrimmed, ignoreCase = true) ||
+                tab.domain.contains(queryTrimmed, ignoreCase = true) ||
+                tab.url.contains(queryTrimmed, ignoreCase = true)
+        }
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -126,14 +142,28 @@ fun TabSwitcherScreen(
                 }
             }
 
+            TabsSearchBar(
+                query = searchQuery,
+                placeholder = stringResource(R.string.tabs_search_hint),
+                onQueryChange = { searchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 6.dp),
+            )
+
             Crossfade(
-                targetState = tabs.isEmpty(),
+                targetState = filteredTabs.isEmpty(),
                 animationSpec = tween(220),
                 label = "tabsEmptyCrossfade",
                 modifier = Modifier.fillMaxSize(),
             ) { isEmpty ->
                 if (isEmpty) {
-                    EmptyTabs()
+                    EmptyTabs(
+                        message = stringResource(
+                            if (tabs.isEmpty()) R.string.tabs_empty else R.string.tabs_search_empty,
+                        ),
+                    )
                 } else {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(2),
@@ -144,13 +174,13 @@ fun TabSwitcherScreen(
                         ),
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        itemsIndexed(tabs, key = { _, tab -> tab.id }) { index, tab ->
+                        items(filteredTabs, key = { (_, tab) -> tab.id }) { (originalIndex, tab) ->
                             TabCard(
                                 tab = tab,
-                                index = index,
+                                index = originalIndex,
                                 thumbnail = thumbnails[tab.id],
-                                onClose = { onCloseTab(index) },
-                                onOpen = { onOpenTab(index) },
+                                onClose = { onCloseTab(originalIndex) },
+                                onOpen = { onOpenTab(originalIndex) },
                                 modifier = Modifier.animateItem(
                                     fadeInSpec = tween(220),
                                     fadeOutSpec = tween(180),
@@ -182,11 +212,60 @@ fun TabSwitcherScreen(
 }
 
 @Composable
-private fun EmptyTabs() {
+internal fun TabsSearchBar(
+    query: String,
+    placeholder: String,
+    onQueryChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LightningTheme.colors
+    TextField(
+        value = query,
+        onValueChange = onQueryChange,
+        singleLine = true,
+        placeholder = {
+            Text(
+                text = placeholder,
+                color = colors.onSurfaceVariant,
+            )
+        },
+        leadingIcon = {
+            Icon(Icons.Filled.Search, contentDescription = null, tint = colors.onSurfaceVariant)
+        },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = stringResource(R.string.browser_clear_query),
+                        tint = colors.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        },
+        textStyle = MaterialTheme.typography.bodyMedium.copy(
+            color = colors.onSurface,
+            fontWeight = FontWeight.Medium,
+        ),
+        shape = RoundedCornerShape(28.dp),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = colors.surfaceContainerHigh,
+            unfocusedContainerColor = colors.surfaceContainerHigh,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            cursorColor = colors.primary,
+        ),
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun EmptyTabs(message: String) {
     val colors = LightningTheme.colors
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
-            text = "No tabs yet",
+            text = message,
             style = MaterialTheme.typography.bodyMedium,
             color = colors.onSurfaceVariant,
         )

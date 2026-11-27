@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.DownloadForOffline
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -64,6 +65,7 @@ fun AppMenuSheet(
     onIncognito: () -> Unit = {},
     incognito: Boolean = false,
     copyUrlVisible: Boolean = false,
+    savedPagesVisible: Boolean = false,
 ) {
     if (visible) {
         val sheetState = rememberModalBottomSheetState()
@@ -127,6 +129,13 @@ fun AppMenuSheet(
                         MenuAction(Icons.Filled.VisibilityOff, stringResource(R.string.menu_incognito)) {
                             onIncognito()
                             onHide()
+                        },
+                    )
+                }
+                if (savedPagesVisible) {
+                    add(
+                        MenuAction(Icons.Filled.OfflinePin, stringResource(R.string.saved_pages_title)) {
+                            onOpen(LightningScreen.SAVED_PAGES)
                         },
                     )
                 }

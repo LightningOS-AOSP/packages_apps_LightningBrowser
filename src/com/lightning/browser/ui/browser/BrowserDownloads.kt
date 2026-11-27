@@ -467,8 +467,12 @@ object BrowserDownloads {
     ) {
         val appContext = context.applicationContext
         val rawBase = title.ifBlank { domain }.ifBlank { "page" }
-        val base = sanitize(rawBase).removeSuffix(".mhtml").ifBlank { "page" }
-        val candidate = "$base.mhtml"
+        val base = sanitize(rawBase)
+            .removeSuffix(".mhtml.mht")
+            .removeSuffix(".mhtml")
+            .removeSuffix(".mht")
+            .ifBlank { "page" }
+        val candidate = "$base.mht"
         Thread {
             val savedName = runCatching {
                 val bytes = tempFile.readBytes()
@@ -796,6 +800,64 @@ object BrowserDownloads {
         return items
             .filter { it.state != DownloadState.COMPLETE || it.title !in hidden }
             .sortedByDescending { it.timestamp }
+    }
+
+    fun querySavedPages(context: Context): List<DownloadItem> {
+        val items = ArrayList<DownloadItem>()
+        val seenTitles = HashSet<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val resolver = context.contentResolver
+            val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val projection = arrayOf(
+                MediaStore.Downloads.DISPLAY_NAME,
+                MediaStore.Downloads.SIZE,
+                MediaStore.Downloads.DATE_MODIFIED,
+            )
+            val selection = "(${MediaStore.Downloads.DISPLAY_NAME} LIKE ? OR ${MediaStore.Downloads.DISPLAY_NAME} LIKE ?) AND ${MediaStore.Downloads.IS_PENDING} = 0"
+            val sortOrder = "${MediaStore.Downloads.DATE_MODIFIED} DESC"
+            runCatching {
+                resolver.query(collection, projection, selection, arrayOf("%.mht", "%.mhtml"), sortOrder)?.use { cursor ->
+                    val nameCol = cursor.getColumnIndex(MediaStore.Downloads.DISPLAY_NAME)
+                    val sizeCol = cursor.getColumnIndex(MediaStore.Downloads.SIZE)
+                    val dateCol = cursor.getColumnIndex(MediaStore.Downloads.DATE_MODIFIED)
+                    while (cursor.moveToNext()) {
+                        val name = if (nameCol >= 0) cursor.getString(nameCol) else null
+                        if (name.isNullOrBlank() || !seenTitles.add(name)) continue
+                        val size = if (sizeCol >= 0) cursor.getLong(sizeCol) else 0L
+                        val modifiedSec = if (dateCol >= 0) cursor.getLong(dateCol) else 0L
+                        items += DownloadItem(
+                            title = name,
+                            domain = "",
+                            detail = if (size > 0L) formatSize(size) else "",
+                            state = DownloadState.COMPLETE,
+                            progress = 1f,
+                            timestamp = modifiedSec * 1000L,
+                            downloadId = -1L,
+                        )
+                    }
+                }
+            }
+        }
+        runCatching {
+            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            dir.listFiles { file ->
+                file.isFile && (file.name.endsWith(".mht", ignoreCase = true) || file.name.endsWith(".mhtml", ignoreCase = true))
+            }
+                ?.forEach { file ->
+                    if (seenTitles.add(file.name)) {
+                        items += DownloadItem(
+                            title = file.name,
+                            domain = "",
+                            detail = formatSize(file.length()),
+                            state = DownloadState.COMPLETE,
+                            progress = 1f,
+                            timestamp = file.lastModified(),
+                            downloadId = -1L,
+                        )
+                    }
+                }
+        }
+        return items.sortedByDescending { it.timestamp }
     }
 
     fun guessExtension(mimeType: String?): String {
