@@ -39,6 +39,7 @@ import com.lightning.browser.ui.theme.LightningTheme
 @Composable
 fun HistoryScreen(
     history: List<HistoryEntry>,
+    onOpen: (HistoryEntry) -> Unit,
     onDelete: (HistoryEntry) -> Unit,
     onClear: () -> Unit,
     onBack: () -> Unit,
@@ -78,7 +79,12 @@ fun HistoryScreen(
                         val entry = entries[i]
                         key(entry) {
                             SwipeToDeleteBox(onDelete = { onDelete(entry) }, shape = shape) {
-                                HistoryRow(entry, shape = shape, index = i)
+                                HistoryRow(
+                                    entry = entry,
+                                    onClick = { onOpen(entry) },
+                                    shape = shape,
+                                    index = i,
+                                )
                             }
                         }
                     }
@@ -92,12 +98,14 @@ fun HistoryScreen(
 @Composable
 private fun HistoryRow(
     entry: HistoryEntry,
+    onClick: () -> Unit,
     shape: Shape = ExpressiveShapes.grouped(0, 1),
     index: Int = 0,
 ) {
     val colors = LightningTheme.colors
     val (container, onContainer) = colors.chipColors(entry.tone)
     Surface(
+        onClick = onClick,
         shape = shape,
         color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),

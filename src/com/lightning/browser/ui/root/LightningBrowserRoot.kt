@@ -518,6 +518,7 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                     )
                     LightningScreen.HISTORY -> HistoryScreen(
                         history = history,
+                        onOpen = { openSite(it.domain) },
                         onDelete = { history.remove(it) },
                         onClear = { history.clear() },
                         onBack = { screen = LightningScreen.HOME },
