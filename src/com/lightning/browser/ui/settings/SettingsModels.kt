@@ -24,6 +24,8 @@ enum class SearchEngine(
     DUCKDUCKGO(R.string.search_engine_duckduckgo, R.string.search_engine_duckduckgo_detail, "https://duckduckgo.com/?q=%s"),
     BING(R.string.search_engine_bing, R.string.search_engine_bing_detail, "https://www.bing.com/search?q=%s"),
     BRAVE(R.string.search_engine_brave, R.string.search_engine_brave_detail, "https://search.brave.com/search?q=%s"),
+    PERPLEXITY(R.string.search_engine_perplexity, R.string.search_engine_perplexity_detail, "https://www.perplexity.ai/search?q=%s"),
+    WIKIPEDIA(R.string.search_engine_wikipedia, R.string.search_engine_wikipedia_detail, "https://en.wikipedia.org/w/index.php?search=%s"),
 }
 
 enum class StartupBehavior(
