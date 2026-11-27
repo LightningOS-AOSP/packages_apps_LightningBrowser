@@ -671,9 +671,32 @@ private fun BrowserPage(
                         val ua = config.userAgent ?: return null
                         val responseHeaders = buildEffectHeaders(request)
                         Log.d("LightningDoH", "intercept $method ${url} -> $host")
-                        val response = PinnedHttp.get(url.toString(), endpoint, ua, responseHeaders)
-                            ?: return null
+                        val response = PinnedHttp.get(
+                            url = url.toString(),
+                            dnsEndpoint = endpoint,
+                            userAgent = ua,
+                            headers = responseHeaders,
+                            method = method,
+                            followRedirects = !request.isForMainFrame,
+                        ) ?: return null
                         config.onDnsResolved()
+                        if (response.statusCode in 300..399) {
+                            val location = response.headers["location"] ?: return null
+                            val nextUrl = runCatching {
+                                java.net.URL(java.net.URL(url.toString()), location).toString()
+                            }.getOrNull() ?: return null
+                            val quoted = JSONObject.quote(nextUrl)
+                            val html = "<!doctype html><script>location.replace($quoted);</script>"
+                            Log.d("LightningDoH", "redirect $host -> $nextUrl")
+                            return WebResourceResponse(
+                                "text/html",
+                                "UTF-8",
+                                200,
+                                "OK",
+                                emptyMap(),
+                                ByteArrayInputStream(html.toByteArray(Charsets.UTF_8)),
+                            )
+                        }
                         Log.d("LightningDoH", "served $host via pinned TLS")
                         if (response.statusCode >= 400 && response.body.isEmpty()) return null
                         val (mime, charset) = parseContentType(response.headers["content-type"])
