@@ -716,10 +716,14 @@ fun LightningBrowserRoot(
             }
             LightningScreen.TABS -> {
                 screenBackStack.clear()
-                screen = if (tabs.getOrNull(activeIndex)?.url?.isNotEmpty() == true) {
-                    LightningScreen.BROWSER
+                screen = if (tabsReturnScreen == LightningScreen.BROWSER) {
+                    if (tabs.getOrNull(activeIndex)?.url?.isNotEmpty() == true) {
+                        LightningScreen.BROWSER
+                    } else {
+                        LightningScreen.HOME
+                    }
                 } else {
-                    LightningScreen.HOME
+                    tabsReturnScreen
                 }
             }
             LightningScreen.SETTINGS, LightningScreen.BOOKMARKS, LightningScreen.HISTORY -> {
@@ -755,9 +759,7 @@ fun LightningBrowserRoot(
                     .navigationBarsPadding()
                     .padding(bottom = barPadding),
             ) {
-                val keepBrowserMounted = screen == LightningScreen.BROWSER ||
-                    (browserEverOpened && (screen == LightningScreen.HOME ||
-                        (screen == LightningScreen.TABS && tabsReturnScreen == LightningScreen.BROWSER)))
+                val keepBrowserMounted = screen == LightningScreen.BROWSER || browserEverOpened
                 if (keepBrowserMounted) {
                     BrowserScreen(
                         tabs = tabs,
@@ -828,7 +830,7 @@ fun LightningBrowserRoot(
                             .fillMaxSize()
                             .background(LightningTheme.colors.surface),
                     ) {
-                        Crossfade(targetState = screen, animationSpec = tween(160), modifier = Modifier.fillMaxSize()) { s ->
+                        Crossfade(targetState = screen, animationSpec = tween(90), modifier = Modifier.fillMaxSize()) { s ->
                             when (s) {
                     LightningScreen.HOME -> HomeScreen(
                         recentPages = recentPages,
@@ -1028,10 +1030,10 @@ fun LightningBrowserRoot(
                                 }
                                 screen = LightningScreen.TABS
                             } else {
-                                screen = if (tabsReturnScreen == LightningScreen.BROWSER && tabs.isNotEmpty()) {
-                                    LightningScreen.BROWSER
+                                screen = if (tabsReturnScreen == LightningScreen.BROWSER) {
+                                    if (tabs.isNotEmpty()) LightningScreen.BROWSER else LightningScreen.HOME
                                 } else {
-                                    LightningScreen.HOME
+                                    tabsReturnScreen
                                 }
                             }
                         },
