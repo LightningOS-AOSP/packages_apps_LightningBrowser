@@ -458,6 +458,36 @@ object BrowserDownloads {
         }
     }
 
+    fun saveOfflineArchive(
+        context: Context,
+        title: String,
+        domain: String,
+        tempFile: File,
+        onResult: (String?) -> Unit,
+    ) {
+        val appContext = context.applicationContext
+        val rawBase = title.ifBlank { domain }.ifBlank { "page" }
+        val base = sanitize(rawBase).removeSuffix(".mhtml").ifBlank { "page" }
+        val candidate = "$base.mhtml"
+        Thread {
+            val savedName = runCatching {
+                val bytes = tempFile.readBytes()
+                val finalName = nextAvailableName(appContext, candidate)
+                val uri = saveFileToDownloads(appContext, finalName, "multipart/related", bytes)
+                if (uri != null) {
+                    BrowserStore.unhideDownload(appContext, finalName)
+                    finalName
+                } else {
+                    null
+                }
+            }.getOrNull()
+            runCatching { tempFile.delete() }
+            Handler(Looper.getMainLooper()).post {
+                onResult(savedName)
+            }
+        }.start()
+    }
+
     private fun saveFileToDownloads(
         context: Context,
         fileName: String,

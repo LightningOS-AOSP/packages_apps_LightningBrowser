@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DesktopWindows
+import androidx.compose.material.icons.filled.DownloadForOffline
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.History
@@ -59,6 +60,7 @@ fun AppMenuSheet(
     onToggleDesktop: () -> Unit = {},
     desktopMode: Boolean = false,
     onPrint: () -> Unit = {},
+    onSaveOffline: () -> Unit = {},
     onIncognito: () -> Unit = {},
     incognito: Boolean = false,
     copyUrlVisible: Boolean = false,
@@ -110,6 +112,12 @@ fun AppMenuSheet(
                     add(
                         MenuAction(Icons.Filled.Print, stringResource(R.string.menu_print)) {
                             onPrint()
+                            onHide()
+                        },
+                    )
+                    add(
+                        MenuAction(Icons.Filled.DownloadForOffline, stringResource(R.string.menu_save_offline)) {
+                            onSaveOffline()
                             onHide()
                         },
                     )

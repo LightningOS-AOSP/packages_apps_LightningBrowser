@@ -91,6 +91,7 @@ import com.lightning.browser.ui.bar.LightningBottomBar
 import com.lightning.browser.ui.bar.QuickArcMenu
 import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.components.ShapedIcon
+import com.lightning.browser.ui.browser.BrowserDownloads
 import com.lightning.browser.ui.browser.BrowserScreen
 import com.lightning.browser.ui.browser.TabNavState
 import com.lightning.browser.ui.home.HomeScreen
@@ -391,6 +392,28 @@ fun LightningBrowserRoot(
             webView.createPrintDocumentAdapter(jobName),
             PrintAttributes.Builder().build(),
         )
+    }
+
+    fun saveOfflinePage() {
+        val webView = webViews[activeIndex] ?: return
+        val tab = tabs.getOrNull(activeIndex) ?: return
+        val tempFile = java.io.File(context.cacheDir, "offline_${System.currentTimeMillis()}.mhtml")
+        webView.saveWebArchive(tempFile.absolutePath, false) { savedPath ->
+            val file = savedPath?.let { java.io.File(it) }
+            if (file != null && file.exists()) {
+                BrowserDownloads.saveOfflineArchive(context, tab.title, tab.domain, file) { savedName ->
+                    val message = if (savedName != null) {
+                        context.getString(R.string.menu_save_offline_saved, savedName)
+                    } else {
+                        context.getString(R.string.menu_save_offline_failed)
+                    }
+                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                runCatching { tempFile.delete() }
+                Toast.makeText(context, R.string.menu_save_offline_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     fun shareUrl() {
@@ -817,6 +840,7 @@ fun LightningBrowserRoot(
                     }
                 },
                 onPrint = { printCurrentPage() },
+                onSaveOffline = { saveOfflinePage() },
                 onIncognito = { context.startActivity(Intent(context, IncognitoActivity::class.java)) },
                 incognito = incognito,
                 copyUrlVisible = screen == LightningScreen.BROWSER &&
