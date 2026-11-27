@@ -55,6 +55,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -73,6 +75,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -140,6 +143,8 @@ fun BrowserScreen(
     onDnsResolved: () -> Unit = {},
     focusSignal: Int = 0,
     onFocusConsumed: () -> Unit = {},
+    findSignal: Int = 0,
+    onFindConsumed: () -> Unit = {},
     chromeVisible: Boolean = true,
     onChromeVisibleChange: (Boolean) -> Unit = {},
     recentSearches: List<String> = emptyList(),
@@ -156,6 +161,10 @@ fun BrowserScreen(
     val keyboard = LocalSoftwareKeyboardController.current
     var editing by remember(activeIndex) { mutableStateOf(false) }
     var query by remember(activeIndex) { mutableStateOf("") }
+    var finding by remember(activeIndex) { mutableStateOf(false) }
+    var findQuery by remember(activeIndex) { mutableStateOf("") }
+    var findActiveMatch by remember(activeIndex) { mutableIntStateOf(0) }
+    var findTotalMatches by remember(activeIndex) { mutableIntStateOf(0) }
     val progress = remember { mutableStateMapOf<Int, Int>() }
     val scrollAccumulator = remember { intArrayOf(0) }
     val lastToggle = remember { longArrayOf(0L) }
@@ -232,12 +241,36 @@ fun BrowserScreen(
 
     LaunchedEffect(focusSignal) {
         if (focusSignal > 0) {
+            finding = false
+            webViews[activeIndex]?.clearMatches()
             editing = true
             query = ""
             onFocusConsumed()
         }
     }
 
+    LaunchedEffect(findSignal) {
+        if (findSignal > 0) {
+            editing = false
+            finding = true
+            findQuery = ""
+            findActiveMatch = 0
+            findTotalMatches = 0
+            onChromeVisibleChange(true)
+            onFindConsumed()
+        }
+    }
+
+    fun closeFind() {
+        finding = false
+        findQuery = ""
+        findActiveMatch = 0
+        findTotalMatches = 0
+        webViews[activeIndex]?.clearMatches()
+        keyboard?.hide()
+    }
+
+    BackHandler(enabled = finding) { closeFind() }
     BackHandler(enabled = editing) { editing = false }
 
     val fullscreen = (webViews[activeIndex]?.tag as? WebConfig)?.fullscreen
@@ -245,10 +278,37 @@ fun BrowserScreen(
 
     Column(modifier.fillMaxSize()) {
         AnimatedVisibility(
-            visible = chromeVisible || editing,
+            visible = chromeVisible || editing || finding,
             enter = expandVertically(tween(200)) + fadeIn(tween(200)),
             exit = shrinkVertically(tween(200)) + fadeOut(tween(150)),
         ) {
+        if (finding) {
+            FindInPageRow(
+                query = findQuery,
+                activeMatch = findActiveMatch,
+                totalMatches = findTotalMatches,
+                onQueryChange = { text ->
+                    findQuery = text
+                    val webView = webViews[activeIndex]
+                    if (webView != null) {
+                        webView.setFindListener { activeMatchOrdinal, numberOfMatches, _ ->
+                            findActiveMatch = activeMatchOrdinal
+                            findTotalMatches = numberOfMatches
+                        }
+                        if (text.isEmpty()) {
+                            webView.clearMatches()
+                            findActiveMatch = 0
+                            findTotalMatches = 0
+                        } else {
+                            webView.findAllAsync(text)
+                        }
+                    }
+                },
+                onPrev = { webViews[activeIndex]?.findNext(false) },
+                onNext = { webViews[activeIndex]?.findNext(true) },
+                onClose = { closeFind() },
+            )
+        } else {
         UrlRow(
             address = displayAddress(activeTab?.url.orEmpty(), activeTab?.domain.orEmpty()),
             query = query,
@@ -271,6 +331,7 @@ fun BrowserScreen(
             },
             onRefresh = { webViews[activeIndex]?.reload() },
         )
+        }
         }
         val activeProgress = progress[activeIndex] ?: 100
         if (activeProgress < 100) {
@@ -1464,6 +1525,93 @@ private fun UrlRow(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FindInPageRow(
+    query: String,
+    activeMatch: Int,
+    totalMatches: Int,
+    onQueryChange: (String) -> Unit,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+    ) {
+        TextField(
+            value = query,
+            onValueChange = onQueryChange,
+            singleLine = true,
+            placeholder = {
+                Text(
+                    text = stringResource(R.string.find_in_page_placeholder),
+                    color = colors.onSurfaceVariant,
+                )
+            },
+            leadingIcon = {
+                Icon(Icons.Filled.Search, null, tint = colors.onSurfaceVariant)
+            },
+            trailingIcon = {
+                if (query.isNotEmpty()) {
+                    Text(
+                        text = if (totalMatches > 0) "${activeMatch + 1}/$totalMatches" else "0/0",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (totalMatches > 0) colors.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(end = 12.dp),
+                    )
+                }
+            },
+            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                color = colors.onSurface,
+                fontWeight = FontWeight.Medium,
+            ),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { if (totalMatches > 0) onNext() }),
+            shape = RoundedCornerShape(28.dp),
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = colors.surfaceContainerHigh,
+                unfocusedContainerColor = colors.surfaceContainerHigh,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                cursorColor = colors.primary,
+            ),
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(focusRequester),
+        )
+        Spacer(Modifier.width(4.dp))
+        TonalIconButton(
+            icon = Icons.Filled.KeyboardArrowUp,
+            contentDescription = stringResource(R.string.find_in_page_prev),
+            onClick = onPrev,
+            enabled = totalMatches > 0,
+            size = 40.dp,
+            iconSize = 22.dp,
+        )
+        TonalIconButton(
+            icon = Icons.Filled.KeyboardArrowDown,
+            contentDescription = stringResource(R.string.find_in_page_next),
+            onClick = onNext,
+            enabled = totalMatches > 0,
+            size = 40.dp,
+            iconSize = 22.dp,
+        )
+        TonalIconButton(
+            icon = Icons.Filled.Close,
+            contentDescription = stringResource(R.string.find_in_page_close),
+            onClick = onClose,
+            size = 40.dp,
+            iconSize = 20.dp,
+        )
     }
 }
 

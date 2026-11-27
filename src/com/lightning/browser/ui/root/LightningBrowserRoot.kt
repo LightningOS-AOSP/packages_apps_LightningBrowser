@@ -165,6 +165,7 @@ fun LightningBrowserRoot(
         )
     }
     var addressFocusSignal by remember { mutableStateOf(0) }
+    var findInPageSignal by remember { mutableStateOf(0) }
     val screenBackStack = remember { mutableStateListOf<LightningScreen>() }
 
     fun navigateTo(target: LightningScreen) {
@@ -523,6 +524,8 @@ fun LightningBrowserRoot(
                         onDnsResolved = { dnsResolvedCount++ },
                         focusSignal = addressFocusSignal,
                         onFocusConsumed = { addressFocusSignal = 0 },
+                        findSignal = findInPageSignal,
+                        onFindConsumed = { findInPageSignal = 0 },
                         chromeVisible = chromeVisible,
                         onChromeVisibleChange = { chromeVisible = it },
                         recentSearches = recentSearches,
@@ -790,6 +793,7 @@ fun LightningBrowserRoot(
                 onCopyUrl = { copyUrl() },
                 onReload = { webViews[activeIndex]?.reload() },
                 onShare = { shareUrl() },
+                onFindInPage = { findInPageSignal++ },
                 onIncognito = { context.startActivity(Intent(context, IncognitoActivity::class.java)) },
                 incognito = incognito,
                 copyUrlVisible = screen == LightningScreen.BROWSER &&

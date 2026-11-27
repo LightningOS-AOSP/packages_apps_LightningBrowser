@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FindInPage
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -43,6 +44,7 @@ fun AppMenuSheet(
     onCopyUrl: () -> Unit = {},
     onReload: () -> Unit = {},
     onShare: () -> Unit = {},
+    onFindInPage: () -> Unit = {},
     onIncognito: () -> Unit = {},
     incognito: Boolean = false,
     copyUrlVisible: Boolean = false,
@@ -72,6 +74,12 @@ fun AppMenuSheet(
                     add(
                         MenuAction(Icons.Filled.Share, stringResource(R.string.menu_share)) {
                             onShare()
+                            onHide()
+                        },
+                    )
+                    add(
+                        MenuAction(Icons.Filled.FindInPage, stringResource(R.string.menu_find_in_page)) {
+                            onFindInPage()
                             onHide()
                         },
                     )
