@@ -23,6 +23,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -249,7 +250,21 @@ fun LightningBrowserRoot(
             dismissClipboard(currentClipSig)
         }
     }
+    var browserEverOpened by remember { mutableStateOf(screen == LightningScreen.BROWSER) }
     var findInPageSignal by remember { mutableStateOf(0) }
+
+    LaunchedEffect(screen) {
+        if (screen == LightningScreen.BROWSER) {
+            browserEverOpened = true
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        android.os.Looper.myQueue().addIdleHandler {
+            runCatching { android.webkit.WebSettings.getDefaultUserAgent(context) }
+            false
+        }
+    }
     val screenBackStack = remember { mutableStateListOf<LightningScreen>() }
 
     fun navigateTo(target: LightningScreen) {
@@ -741,7 +756,8 @@ fun LightningBrowserRoot(
                     .padding(bottom = barPadding),
             ) {
                 val keepBrowserMounted = screen == LightningScreen.BROWSER ||
-                    (screen == LightningScreen.TABS && tabsReturnScreen == LightningScreen.BROWSER)
+                    (browserEverOpened && (screen == LightningScreen.HOME ||
+                        (screen == LightningScreen.TABS && tabsReturnScreen == LightningScreen.BROWSER)))
                 if (keepBrowserMounted) {
                     BrowserScreen(
                         tabs = tabs,
@@ -758,8 +774,13 @@ fun LightningBrowserRoot(
                         onDnsResolved = { dnsResolvedCount++ },
                         focusSignal = addressFocusSignal,
                         onFocusConsumed = { addressFocusSignal = 0 },
+                        browserVisible = screen == LightningScreen.BROWSER,
                         editStartedFromHome = editStartedFromHome,
                         onClearEditFromHome = { editStartedFromHome = false },
+                        onCancelFromHome = {
+                            editStartedFromHome = false
+                            screen = LightningScreen.HOME
+                        },
                         findSignal = findInPageSignal,
                         onFindConsumed = { findInPageSignal = 0 },
                         chromeVisible = chromeVisible,
@@ -799,8 +820,8 @@ fun LightningBrowserRoot(
                 }
                 AnimatedVisibility(
                     visible = screen != LightningScreen.BROWSER,
-                    enter = fadeIn(tween(150)),
-                    exit = fadeOut(tween(140)),
+                    enter = EnterTransition.None,
+                    exit = fadeOut(tween(60)),
                 ) {
                     Box(
                         modifier = Modifier

@@ -211,8 +211,10 @@ fun BrowserScreen(
     onDnsResolved: () -> Unit = {},
     focusSignal: Int = 0,
     onFocusConsumed: () -> Unit = {},
+    browserVisible: Boolean = true,
     editStartedFromHome: Boolean = false,
     onClearEditFromHome: () -> Unit = {},
+    onCancelFromHome: () -> Unit = {},
     findSignal: Int = 0,
     onFindConsumed: () -> Unit = {},
     chromeVisible: Boolean = true,
@@ -237,6 +239,7 @@ fun BrowserScreen(
     val activeTab = tabs.getOrNull(activeIndex)
     val keyboard = LocalSoftwareKeyboardController.current
     var editing by remember(activeIndex) { mutableStateOf(false) }
+    val isEditing = editing || focusSignal > 0
     var query by remember(activeIndex) { mutableStateOf("") }
     var finding by remember(activeIndex) { mutableStateOf(false) }
     var findQuery by remember(activeIndex) { mutableStateOf("") }
@@ -255,8 +258,14 @@ fun BrowserScreen(
         DohResolver.endpointFor(dnsProvider, customDnsUrl)
     }
 
-    LaunchedEffect(editing, activeIndex, dismissedClipTimestamp) {
-        if (editing) {
+    LaunchedEffect(browserVisible) {
+        if (!browserVisible && editing) {
+            editing = false
+        }
+    }
+
+    LaunchedEffect(isEditing, activeIndex, dismissedClipTimestamp) {
+        if (isEditing) {
             val sig = ClipboardUrlHelper.clipSignature(context)
             if (sig == dismissedClipTimestamp) {
                 clipboardUrl = null
@@ -369,23 +378,23 @@ fun BrowserScreen(
     }
 
     fun cancelEdit() {
-        editing = false
         keyboard?.hide()
         if (editStartedFromHome) {
-            onClearEditFromHome()
-            onBackHome()
+            onCancelFromHome()
+        } else {
+            editing = false
         }
     }
 
     BackHandler(enabled = finding) { closeFind() }
-    BackHandler(enabled = editing) { cancelEdit() }
+    BackHandler(enabled = isEditing) { cancelEdit() }
 
     val fullscreen = (webViews[activeIndex]?.tag as? WebConfig)?.fullscreen
     BackHandler(enabled = fullscreen?.showing == true) { fullscreen?.hide() }
 
     Column(modifier.fillMaxSize()) {
         AnimatedVisibility(
-            visible = chromeVisible || editing || finding,
+            visible = chromeVisible || isEditing || finding,
             enter = expandVertically(tween(200)) + fadeIn(tween(200)),
             exit = shrinkVertically(tween(200)) + fadeOut(tween(150)),
         ) {
@@ -419,7 +428,7 @@ fun BrowserScreen(
         UrlRow(
             address = displayAddress(activeTab?.url.orEmpty(), activeTab?.domain.orEmpty()),
             query = query,
-            editing = editing,
+            editing = isEditing,
             onQueryChange = { query = it },
             onEditStart = {
                 onClearEditFromHome()
@@ -455,7 +464,7 @@ fun BrowserScreen(
             )
         }
         Box(Modifier.weight(1f)) {
-            if (activeTab != null && activeTab.url.isNotEmpty()) {
+            if (activeTab != null && activeTab.url.isNotEmpty() && (!isEditing || webViews[activeIndex] != null)) {
                 key(activeTab.id) {
                 BrowserPage(
                     tab = activeTab,
@@ -534,7 +543,7 @@ fun BrowserScreen(
             } else {
                 EmptyBrowser()
             }
-            if (editing) {
+            if (isEditing) {
                 Suggestions(
                     query = query.trim(),
                     clipboardUrl = clipboardUrl,
@@ -576,11 +585,11 @@ fun BrowserScreen(
                     },
                 )
             }
-            if (activeProgress < 100 && !editing) {
+            if (activeProgress < 100 && !isEditing) {
                 LightningLoadingIndicator(Modifier.fillMaxSize())
             }
             androidx.compose.animation.AnimatedVisibility(
-                visible = showClipboardBanner && !editing && !finding && waybackSnapshot == null && downloadPopup == null,
+                visible = showClipboardBanner && !isEditing && !finding && waybackSnapshot == null && downloadPopup == null,
                 enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
                 exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(180)),
                 modifier = Modifier
