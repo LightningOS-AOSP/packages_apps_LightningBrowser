@@ -71,6 +71,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -122,6 +123,7 @@ import com.lightning.browser.ui.settings.StartupBehavior
 import com.lightning.browser.ui.settings.StartupScreen
 import com.lightning.browser.ui.tabs.BrowserTab
 import com.lightning.browser.ui.tabs.ClosedTab
+import com.lightning.browser.ui.tabs.RecentlyClosedScreen
 import com.lightning.browser.ui.tabs.SavedPagesScreen
 import com.lightning.browser.ui.tabs.TabSwitcherScreen
 import com.lightning.browser.ui.theme.ExpressiveShapes
@@ -130,17 +132,19 @@ import com.lightning.browser.ui.theme.LocalHapticsEnabled
 import com.lightning.browser.ui.theme.ThemeMode
 import com.lightning.browser.ui.theme.rememberLightningHaptics
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 data class DuplicateTabWarning(
     val existingIndex: Int,
     val existingTabId: String,
     val title: String,
     val normalizedUrl: String,
+    val forTabId: String = "",
     val createdTabId: String? = null,
 )
 
 enum class LightningScreen {
-    HOME, TABS, SAVED_PAGES, PRINT, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT, BOOKMARKS, HISTORY,
+    HOME, TABS, SAVED_PAGES, RECENTLY_CLOSED, PRINT, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT, BOOKMARKS, HISTORY,
     SITE_PERMISSIONS, BROWSER, STARTUP
 }
 
@@ -345,14 +349,25 @@ fun LightningBrowserRoot(
     var showAddPinned by remember { mutableStateOf(false) }
     var pinnedDraft by remember { mutableStateOf("") }
     var duplicateTabWarning by remember { mutableStateOf<DuplicateTabWarning?>(null) }
-    val suppressedDuplicateUrls = remember { HashSet<String>() }
+    val suppressedDuplicateKeys = remember { HashSet<String>() }
     val freshTabIds = remember { HashSet<String>() }
+    val closingTabIds = remember { mutableStateListOf<String>() }
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(duplicateTabWarning) {
         val current = duplicateTabWarning ?: return@LaunchedEffect
-        delay(6_000L)
+        delay(8_000L)
         if (duplicateTabWarning == current) {
-            suppressedDuplicateUrls.add(current.normalizedUrl)
+            if (current.forTabId.isNotEmpty()) {
+                suppressedDuplicateKeys.add("${current.forTabId}|${current.normalizedUrl}")
+            }
+            duplicateTabWarning = null
+        }
+    }
+    LaunchedEffect(activeIndex) {
+        val activeId = tabs.getOrNull(activeIndex)?.id
+        val current = duplicateTabWarning
+        if (current != null && current.forTabId.isNotEmpty() && current.forTabId != activeId) {
             duplicateTabWarning = null
         }
     }
@@ -645,17 +660,59 @@ fun LightningBrowserRoot(
         .take(3)
         .map { RecentPage(it.title, it.domain, it.icon, it.tone) }
 
+    fun normalizeHostForDup(rawHost: String): String {
+        var host = rawHost.lowercase()
+        while (host.startsWith("www.") || host.startsWith("m.") || host.startsWith("mobile.")) {
+            host = when {
+                host.startsWith("www.") -> host.removePrefix("www.")
+                host.startsWith("m.") -> host.removePrefix("m.")
+                else -> host.removePrefix("mobile.")
+            }
+        }
+        host = host.replace(
+            Regex("^([a-z-]+)\\.m\\.(wikipedia|wiktionary|wikiquote|wikibooks|wikisource|wikinews|wikiversity|wikivoyage)\\.org$"),
+            "$1.$2.org",
+        )
+        return host
+    }
+
+    fun normalizeQueryForDup(uri: Uri, host: String, path: String): String {
+        val rawQuery = uri.encodedQuery ?: return ""
+        val ignored = buildSet {
+            add("utm_source"); add("utm_medium"); add("utm_campaign")
+            add("utm_term"); add("utm_content"); add("fbclid"); add("gclid"); add("si")
+            if (host == "search.brave.com" && path == "/search" && uri.getQueryParameter("q") != null) {
+                add("source")
+            }
+        }
+        val kept = rawQuery.split("&")
+            .filter { it.isNotEmpty() }
+            .mapNotNull { part ->
+                val eq = part.indexOf('=')
+                val rawKey = if (eq >= 0) part.substring(0, eq) else part
+                val key = Uri.decode(rawKey.replace("+", " "))
+                if (key in ignored) return@mapNotNull null
+                val rawVal = if (eq >= 0) part.substring(eq + 1) else ""
+                val value = Uri.decode(rawVal.replace("+", " "))
+                if (eq >= 0) "${Uri.encode(key)}=${Uri.encode(value)}" else Uri.encode(key)
+            }
+            .sorted()
+        return if (kept.isEmpty()) "" else "?${kept.joinToString("&")}"
+    }
+
     fun normalizeTabUrl(raw: String): String {
         val trimmed = raw.trim()
         if (trimmed.isEmpty() || trimmed == "about:blank") return ""
         return runCatching {
-            val uri = android.net.Uri.parse(trimmed)
+            val uri = Uri.parse(trimmed)
             val scheme = uri.scheme?.lowercase().orEmpty()
-            val host = uri.host?.lowercase()?.removePrefix("www.").orEmpty()
-            val path = uri.path.orEmpty().let { if (it == "/") "" else it.trimEnd('/') }
-            val query = uri.encodedQuery?.let { "?$it" }.orEmpty()
-            if (scheme.isNotEmpty() && host.isNotEmpty()) {
-                "$scheme://$host$path$query"
+            val rawHost = uri.host.orEmpty()
+            if (scheme.isNotEmpty() && rawHost.isNotEmpty()) {
+                val host = normalizeHostForDup(rawHost)
+                val path = uri.path.orEmpty().let { if (it == "/") "" else it.trimEnd('/') }
+                val query = normalizeQueryForDup(uri, host, path)
+                val prefix = if (scheme == "http" || scheme == "https") "" else "$scheme://"
+                "$prefix$host$path$query"
             } else {
                 trimmed.trimEnd('/').lowercase()
             }
@@ -663,11 +720,24 @@ fun LightningBrowserRoot(
     }
 
     fun checkDuplicateTab(url: String, targetIndex: Int, createdTabId: String? = null) {
+        val targetTab = tabs.getOrNull(targetIndex)
+        val targetTabId = targetTab?.id.orEmpty()
         val norm = normalizeTabUrl(url)
-        if (norm.isEmpty() || norm in suppressedDuplicateUrls) return
-        val targetPrivate = tabs.getOrNull(targetIndex)?.private ?: incognito
+        if (norm.isEmpty()) {
+            if (duplicateTabWarning?.forTabId == targetTabId) duplicateTabWarning = null
+            return
+        }
+        val suppressKey = "$targetTabId|$norm"
+        if (targetTabId.isNotEmpty() && suppressKey in suppressedDuplicateKeys) {
+            if (duplicateTabWarning?.forTabId == targetTabId) duplicateTabWarning = null
+            return
+        }
+        val targetPrivate = targetTab?.private ?: incognito
         val match = tabs.withIndex().firstOrNull { (i, tab) ->
-            i != targetIndex && tab.private == targetPrivate && normalizeTabUrl(tab.url) == norm
+            i != targetIndex &&
+                tab.id !in closingTabIds &&
+                tab.private == targetPrivate &&
+                normalizeTabUrl(tab.url) == norm
         }
         if (match != null) {
             duplicateTabWarning = DuplicateTabWarning(
@@ -675,8 +745,11 @@ fun LightningBrowserRoot(
                 existingTabId = match.value.id,
                 title = match.value.title.ifBlank { match.value.domain.ifBlank { url } },
                 normalizedUrl = norm,
+                forTabId = targetTabId,
                 createdTabId = createdTabId,
             )
+        } else if (duplicateTabWarning?.forTabId == targetTabId) {
+            duplicateTabWarning = null
         }
     }
 
@@ -845,7 +918,7 @@ fun LightningBrowserRoot(
                 navigateBack(LightningScreen.HOME)
             }
             LightningScreen.SITE_PERMISSIONS -> navigateBack(LightningScreen.PRIVACY)
-            LightningScreen.SAVED_PAGES -> navigateBack(LightningScreen.TABS)
+            LightningScreen.SAVED_PAGES, LightningScreen.RECENTLY_CLOSED -> navigateBack(LightningScreen.TABS)
             LightningScreen.PRINT -> navigateBack(LightningScreen.BROWSER)
             else -> navigateBack(LightningScreen.SETTINGS)
         }
@@ -925,19 +998,44 @@ fun LightningBrowserRoot(
                             if (warning != null) {
                                 val toRemoveId = warning.createdTabId
                                     ?: tabs.getOrNull(activeIndex)?.id?.takeIf { it in freshTabIds }
-                                if (toRemoveId != null) {
-                                    freshTabIds.remove(toRemoveId)
-                                    val cIdx = tabs.indexOfFirst { it.id == toRemoveId }
-                                    if (cIdx >= 0 && tabs.size > 1) removeTabAt(cIdx)
-                                }
                                 val target = tabs.indexOfFirst { it.id == warning.existingTabId }
                                 if (target >= 0) {
                                     activeIndex = target
                                 }
+                                if (toRemoveId != null && toRemoveId != warning.existingTabId) {
+                                    freshTabIds.remove(toRemoveId)
+                                    val idxNow = tabs.indexOfFirst { it.id == toRemoveId }
+                                    if (idxNow >= 0) {
+                                        webViews[idxNow]?.stopLoading()
+                                    }
+                                    if (toRemoveId !in closingTabIds) {
+                                        closingTabIds.add(toRemoveId)
+                                    }
+                                    coroutineScope.launch {
+                                        delay(260L)
+                                        closingTabIds.remove(toRemoveId)
+                                        val activeId = tabs.getOrNull(activeIndex)?.id
+                                        val cIdx = tabs.indexOfFirst { it.id == toRemoveId }
+                                        if (cIdx >= 0 && tabs.size > 1) {
+                                            removeTabAt(cIdx)
+                                            if (activeId != null) {
+                                                val updatedActive = tabs.indexOfFirst { it.id == activeId }
+                                                if (updatedActive >= 0) activeIndex = updatedActive
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         },
                         onDismissDuplicateTab = {
-                            duplicateTabWarning?.let { suppressedDuplicateUrls.add(it.normalizedUrl) }
+                            duplicateTabWarning?.let { warning ->
+                                val key = if (warning.forTabId.isNotEmpty()) {
+                                    "${warning.forTabId}|${warning.normalizedUrl}"
+                                } else {
+                                    warning.normalizedUrl
+                                }
+                                suppressedDuplicateKeys.add(key)
+                            }
                             tabs.getOrNull(activeIndex)?.id?.let { freshTabIds.remove(it) }
                             duplicateTabWarning = null
                         },
@@ -1003,7 +1101,6 @@ fun LightningBrowserRoot(
                     LightningScreen.TABS -> TabSwitcherScreen(
                         tabs = tabs,
                         thumbnails = tabThumbnails,
-                        closedTabs = closedTabs,
                         onCloseTab = { index ->
                             if (index in tabs.indices) {
                                 val removed = tabs.removeAt(index)
@@ -1051,26 +1148,31 @@ fun LightningBrowserRoot(
                             activeIndex = it
                             screen = LightningScreen.BROWSER
                         },
-                        onRestoreClosedTab = { closed ->
-                            closedTabs.removeAll { it.id == closed.id }
-                            tabs.add(
-                                BrowserTab(
-                                    title = closed.title,
-                                    domain = closed.domain,
-                                    url = closed.url,
-                                    desktopMode = closed.desktopMode,
-                                    private = incognito,
-                                ),
-                            )
-                            activeIndex = tabs.size - 1
-                            screen = LightningScreen.BROWSER
-                        },
-                        onClearClosedTabs = {
-                            closedTabs.clear()
-                        },
                     )
                     LightningScreen.SAVED_PAGES -> SavedPagesScreen(
                         onOpenPage = { title, uri -> openSavedPage(title, uri) },
+                        onBack = { navigateBack(LightningScreen.TABS) },
+                    )
+                    LightningScreen.RECENTLY_CLOSED -> RecentlyClosedScreen(
+                        closedTabs = closedTabs,
+                        onRestoreTab = { closed ->
+                            closedTabs.removeAll { it.id == closed.id }
+                            val restored = BrowserTab(
+                                title = closed.title,
+                                domain = closed.domain,
+                                url = closed.url,
+                                desktopMode = closed.desktopMode,
+                                private = incognito,
+                            )
+                            tabs.add(restored)
+                            val targetIdx = tabs.size - 1
+                            activeIndex = targetIdx
+                            checkDuplicateTab(closed.url, targetIdx, restored.id)
+                            screen = LightningScreen.BROWSER
+                        },
+                        onClearAll = {
+                            closedTabs.clear()
+                        },
                         onBack = { navigateBack(LightningScreen.TABS) },
                     )
                     LightningScreen.PRINT -> PrintScreen(

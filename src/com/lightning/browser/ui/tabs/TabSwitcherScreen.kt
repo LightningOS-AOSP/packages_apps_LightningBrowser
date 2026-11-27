@@ -94,13 +94,10 @@ import com.lightning.browser.ui.theme.tone
 fun TabSwitcherScreen(
     tabs: SnapshotStateList<BrowserTab>,
     thumbnails: Map<String, Bitmap> = emptyMap(),
-    closedTabs: List<ClosedTab> = emptyList(),
     onCloseTab: (Int) -> Unit = {},
     onCloseAll: () -> Unit = {},
     onNewTab: () -> Unit = {},
     onOpenTab: (Int) -> Unit = {},
-    onRestoreClosedTab: (ClosedTab) -> Unit = {},
-    onClearClosedTabs: () -> Unit = {},
 ) {
     val colors = LightningTheme.colors
     val haptics = rememberLightningHaptics()
@@ -144,16 +141,6 @@ fun TabSwitcherScreen(
                 tab.domain.contains(queryTrimmed, ignoreCase = true) ||
                 tab.url.contains(queryTrimmed, ignoreCase = true)
         }
-    }
-    val filteredClosedTabs = remember(closedTabs, queryTrimmed) {
-        val now = System.currentTimeMillis()
-        closedTabs.filter { tab ->
-            now - tab.closedAt <= BrowserStore.CLOSED_TAB_EXPIRY_MS &&
-                (queryTrimmed.isEmpty() ||
-                    tab.title.contains(queryTrimmed, ignoreCase = true) ||
-                    tab.domain.contains(queryTrimmed, ignoreCase = true) ||
-                    tab.url.contains(queryTrimmed, ignoreCase = true))
-        }.take(BrowserStore.MAX_CLOSED_TABS)
     }
 
     Box(Modifier.fillMaxSize()) {
@@ -207,7 +194,7 @@ fun TabSwitcherScreen(
             )
 
             Crossfade(
-                targetState = filteredTabs.isEmpty() && filteredClosedTabs.isEmpty(),
+                targetState = filteredTabs.isEmpty(),
                 animationSpec = tween(220),
                 label = "tabsEmptyCrossfade",
                 modifier = Modifier.fillMaxSize(),
@@ -228,47 +215,19 @@ fun TabSwitcherScreen(
                         ),
                         modifier = Modifier.fillMaxSize(),
                     ) {
-                        if (filteredTabs.isEmpty()) {
-                            item(span = { GridItemSpan(2) }) {
-                                Box(
-                                    contentAlignment = Alignment.Center,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 28.dp),
-                                ) {
-                                    Text(
-                                        text = stringResource(
-                                            if (tabs.isEmpty()) R.string.tabs_empty else R.string.tabs_search_empty,
-                                        ),
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = colors.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        } else {
-                            items(filteredTabs, key = { (_, tab) -> tab.id }) { (originalIndex, tab) ->
-                                TabCard(
-                                    tab = tab,
-                                    index = originalIndex,
-                                    thumbnail = thumbnails[tab.id],
-                                    onClose = { onCloseTab(originalIndex) },
-                                    onOpen = { onOpenTab(originalIndex) },
-                                    modifier = Modifier.animateItem(
-                                        fadeInSpec = tween(220),
-                                        fadeOutSpec = tween(180),
-                                        placementSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                                    ),
-                                )
-                            }
-                        }
-                        if (filteredClosedTabs.isNotEmpty()) {
-                            item(span = { GridItemSpan(2) }) {
-                                RecentlyClosedSection(
-                                    closedTabs = filteredClosedTabs,
-                                    onRestore = onRestoreClosedTab,
-                                    onClear = onClearClosedTabs,
-                                )
-                            }
+                        items(filteredTabs, key = { (_, tab) -> tab.id }) { (originalIndex, tab) ->
+                            TabCard(
+                                tab = tab,
+                                index = originalIndex,
+                                thumbnail = thumbnails[tab.id],
+                                onClose = { onCloseTab(originalIndex) },
+                                onOpen = { onOpenTab(originalIndex) },
+                                modifier = Modifier.animateItem(
+                                    fadeInSpec = tween(220),
+                                    fadeOutSpec = tween(180),
+                                    placementSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                                ),
+                            )
                         }
                     }
                 }
@@ -369,117 +328,6 @@ internal fun TabsSearchBar(
         ),
         modifier = modifier.onFocusChanged { isFocused = it.isFocused },
     )
-}
-
-@Composable
-private fun RecentlyClosedSection(
-    closedTabs: List<ClosedTab>,
-    onRestore: (ClosedTab) -> Unit,
-    onClear: () -> Unit,
-) {
-    val colors = LightningTheme.colors
-    val haptics = rememberLightningHaptics()
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(
-                text = stringResource(R.string.tabs_recently_closed_header).uppercase(),
-                style = EyebrowTextStyle,
-                color = colors.onSurfaceVariant,
-            )
-            Spacer(Modifier.width(8.dp))
-            Surface(
-                shape = CircleShape,
-                color = colors.surfaceContainerHigh,
-            ) {
-                Text(
-                    text = closedTabs.size.toString(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = onClear) {
-                Text(
-                    text = stringResource(R.string.tabs_recently_closed_clear),
-                    style = EyebrowTextStyle,
-                    color = colors.primary,
-                )
-            }
-        }
-        Text(
-            text = stringResource(R.string.tabs_recently_closed_note),
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 10.dp),
-        )
-        GroupedColumn(closedTabs.size) { index, shape ->
-            val tab = closedTabs[index]
-            val tone = colors.tone(index)
-            Surface(
-                onClick = {
-                    haptics.confirm()
-                    onRestore(tab)
-                },
-                shape = shape,
-                color = colors.surfaceContainerHigh,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                ) {
-                    ShapedIcon(
-                        icon = Icons.Filled.History,
-                        shape = ExpressiveShapes.cycle(index),
-                        container = tone.container,
-                        content = tone.content,
-                        size = 40.dp,
-                        iconSize = 20.dp,
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = tab.title.ifBlank { tab.domain.ifBlank { tab.url } },
-                            style = MaterialTheme.typography.titleSmall,
-                            color = colors.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        val ageText = formatClosedAge(tab.closedAt, stringResource(R.string.tabs_recently_closed_just_now))
-                        val subtitle = listOf(tab.domain.ifBlank { tab.url }, ageText)
-                            .filter { it.isNotBlank() }
-                            .joinToString(" · ")
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = colors.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun formatClosedAge(closedAt: Long, justNow: String): String {
-    val diff = (System.currentTimeMillis() - closedAt).coerceAtLeast(0L)
-    val minutes = diff / 60_000L
-    val hours = diff / 3_600_000L
-    return when {
-        minutes < 1L -> justNow
-        hours < 1L -> "${minutes}m ago"
-        else -> "${hours}h ago"
-    }
 }
 
 @Composable

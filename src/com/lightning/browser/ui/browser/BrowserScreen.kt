@@ -1,6 +1,7 @@
 package com.lightning.browser.ui.browser
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -26,6 +27,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -96,6 +99,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -470,89 +475,157 @@ fun BrowserScreen(
                     .height(3.dp),
             )
         }
-        Box(Modifier.weight(1f)) {
-            if (activeTab != null && activeTab.url.isNotEmpty() && (!isEditing || webViews[activeIndex] != null)) {
-                key(activeTab.id) {
-                BrowserPage(
-                    tab = activeTab,
-                    index = activeIndex,
-                    adBlocking = adBlocking,
-                    dnsEndpoint = dnsEndpoint,
-                    bypassTrusted = bypassTrusted,
-                    webViews = webViews,
-                    loadedUrls = loadedUrls,
-                    onProgress = { progress[activeIndex] = it },
-                    onNavChange = { back, forward -> navStates[activeIndex] = TabNavState(back, forward) },
-                    onScrolled = { scrollY, delta ->
-                        val now = System.currentTimeMillis()
-                        if (now - lastToggle[0] > CHROME_SETTLE_MS && delta != 0) {
-                            if (scrollY <= 0) {
-                                scrollAccumulator[0] = 0
-                                if (!chromeVisible) {
-                                    lastToggle[0] = now
-                                    onChromeVisibleChange(true)
-                                }
-                            } else {
-                                if ((delta > 0) != (scrollAccumulator[0] > 0)) scrollAccumulator[0] = 0
-                                scrollAccumulator[0] += delta
-                                if (scrollAccumulator[0] > CHROME_SCROLL_THRESHOLD && chromeVisible) {
-                                    scrollAccumulator[0] = 0
-                                    lastToggle[0] = now
-                                    onChromeVisibleChange(false)
-                                } else if (scrollAccumulator[0] < -CHROME_SCROLL_THRESHOLD && !chromeVisible) {
-                                    scrollAccumulator[0] = 0
-                                    lastToggle[0] = now
-                                    onChromeVisibleChange(true)
-                                }
-                            }
-                        }
-                    },
-                    onUrlChange = { url ->
-                        if (url.isNotBlank() && url != "about:blank") {
-                            val prev = loadedUrls[activeIndex]
-                            loadedUrls[activeIndex] = url
-                            val current = tabs.getOrNull(activeIndex) ?: activeTab
-                            val isLocal = url.startsWith("content://") || url.startsWith("file://")
-                            val domain = if (isLocal) current.domain else hostOf(url)
-                            onUpdateTab(activeIndex, current.copy(url = url, domain = domain))
-                            if (!isLocal && prev != url) {
-                                onCheckDuplicateTab(url)
-                            }
-                        }
-                    },
-                    onPageMeta = { title, domain, url ->
-                        loadedUrls[activeIndex] = url
-                        val current = tabs.getOrNull(activeIndex) ?: activeTab
-                        val isLocal = url.startsWith("content://") || url.startsWith("file://")
-                        val resolvedDomain = if (isLocal) current.domain else domain
-                        val resolvedTitle = if (isLocal && title.isBlank()) current.title else title
-                        onUpdateTab(activeIndex, current.copy(title = resolvedTitle, domain = resolvedDomain, url = url))
-                        if (!current.private && !isLocal) onRecordVisit(title, domain)
-                    },
-                    onDownload = ::startDownload,
-                    onDownloadStart = ::showDownloadStarted,
-                    onDownloadComplete = ::showDownloadFinished,
-                    onDuplicateBlob = { existing, suggested, mime, temp ->
-                        downloadPopup = null
-                        duplicateDownload = DuplicateDownloadPrompt.BlobTemp(existing, suggested, mime, temp)
-                    },
-                    onBlocked = onBlocked,
-                    onDnsResolved = onDnsResolved,
-                    onPrintRequest = onPrintRequest,
-                    onHttpError = { failedUrl, statusCode ->
-                        if (statusCode in listOf(404, 410, 502, 504)) {
-                            WaybackResolver.checkAvailability(failedUrl) { result ->
-                                if (result != null && (activeTab?.url == failedUrl || loadedUrls[activeIndex] == failedUrl)) {
-                                    waybackSnapshot = result
-                                }
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
+        var previousTabId by remember { mutableStateOf(activeTab?.id) }
+        var outgoingTabId by remember { mutableStateOf<String?>(null) }
+        val incomingAlpha = remember { Animatable(1f) }
+        val currentTabId = activeTab?.id
+        val isTransitionPending = currentTabId != null &&
+            previousTabId != null &&
+            currentTabId != previousTabId &&
+            activeTab?.url?.isNotEmpty() == true &&
+            tabs.any { it.id == previousTabId && it.url.isNotEmpty() }
+
+        LaunchedEffect(currentTabId) {
+            if (currentTabId != null && previousTabId != null && currentTabId != previousTabId) {
+                val prevHasPage = tabs.any { it.id == previousTabId && it.url.isNotEmpty() }
+                val nextHasPage = activeTab?.url?.isNotEmpty() == true
+                if (prevHasPage && nextHasPage) {
+                    outgoingTabId = previousTabId
+                    incomingAlpha.snapTo(0.005f)
+                    previousTabId = currentTabId
+                    // Allow 2 frames for the target WebView to wake and draw before fading in.
+                    delay(32L)
+                    incomingAlpha.animateTo(1f, tween(200, easing = FastOutSlowInEasing))
+                    outgoingTabId = null
+                } else {
+                    outgoingTabId = null
+                    incomingAlpha.snapTo(1f)
+                    previousTabId = currentTabId
                 }
             } else {
+                outgoingTabId = null
+                incomingAlpha.snapTo(1f)
+                previousTabId = currentTabId
+            }
+        }
+
+        Box(Modifier.weight(1f)) {
+            if (activeTab == null || activeTab.url.isEmpty() || (isEditing && webViews[activeIndex] == null)) {
                 EmptyBrowser()
+            }
+            tabs.forEachIndexed { idx, tab ->
+                val isActive = idx == activeIndex
+                val isOutgoing = (tab.id == outgoingTabId) || (isTransitionPending && tab.id == previousTabId)
+                val isVisibleLayer = isActive || isOutgoing
+                val shouldMount = tab.url.isNotEmpty() && (!isEditing || webViews[idx] != null) &&
+                    (isVisibleLayer || webViews[idx] != null)
+                if (shouldMount) {
+                    key(tab.id) {
+                        val layerZ = when {
+                            isActive -> 1f
+                            isOutgoing -> 0.5f
+                            else -> 0f
+                        }
+                        BrowserPage(
+                            tab = tab,
+                            index = idx,
+                            isActive = isActive,
+                            isVisibleLayer = isVisibleLayer,
+                            adBlocking = adBlocking,
+                            dnsEndpoint = dnsEndpoint,
+                            bypassTrusted = bypassTrusted,
+                            webViews = webViews,
+                            loadedUrls = loadedUrls,
+                            onProgress = { progress[idx] = it },
+                            onNavChange = { back, forward ->
+                                val next = TabNavState(back, forward)
+                                if (navStates[idx] != next) navStates[idx] = next
+                            },
+                            onScrolled = { scrollY, delta ->
+                                if (!isActive) return@BrowserPage
+                                val now = System.currentTimeMillis()
+                                if (now - lastToggle[0] > CHROME_SETTLE_MS && delta != 0) {
+                                    if (scrollY <= 0) {
+                                        scrollAccumulator[0] = 0
+                                        if (!chromeVisible) {
+                                            lastToggle[0] = now
+                                            onChromeVisibleChange(true)
+                                        }
+                                    } else {
+                                        if ((delta > 0) != (scrollAccumulator[0] > 0)) scrollAccumulator[0] = 0
+                                        scrollAccumulator[0] += delta
+                                        if (scrollAccumulator[0] > CHROME_SCROLL_THRESHOLD && chromeVisible) {
+                                            scrollAccumulator[0] = 0
+                                            lastToggle[0] = now
+                                            onChromeVisibleChange(false)
+                                        } else if (scrollAccumulator[0] < -CHROME_SCROLL_THRESHOLD && !chromeVisible) {
+                                            scrollAccumulator[0] = 0
+                                            lastToggle[0] = now
+                                            onChromeVisibleChange(true)
+                                        }
+                                    }
+                                }
+                            },
+                            onUrlChange = { url ->
+                                if (url.isNotBlank() && url != "about:blank") {
+                                    val prev = loadedUrls[idx]
+                                    loadedUrls[idx] = url
+                                    val current = tabs.getOrNull(idx) ?: tab
+                                    val isLocal = url.startsWith("content://") || url.startsWith("file://")
+                                    val domain = if (isLocal) current.domain else hostOf(url)
+                                    onUpdateTab(idx, current.copy(url = url, domain = domain))
+                                    if (isActive && !isLocal && prev != url) {
+                                        onCheckDuplicateTab(url)
+                                    }
+                                }
+                            },
+                            onDuplicateCheckCandidate = { candidate ->
+                                val isLocal = candidate.startsWith("content://") || candidate.startsWith("file://")
+                                if (isActive && !isLocal) {
+                                    onCheckDuplicateTab(candidate)
+                                }
+                            },
+                            onPageMeta = { title, domain, url ->
+                                loadedUrls[idx] = url
+                                val current = tabs.getOrNull(idx) ?: tab
+                                val isLocal = url.startsWith("content://") || url.startsWith("file://")
+                                val resolvedDomain = if (isLocal) current.domain else domain
+                                val resolvedTitle = if (isLocal && title.isBlank()) current.title else title
+                                onUpdateTab(idx, current.copy(title = resolvedTitle, domain = resolvedDomain, url = url))
+                                if (!current.private && !isLocal) onRecordVisit(title, domain)
+                            },
+                            onDownload = ::startDownload,
+                            onDownloadStart = ::showDownloadStarted,
+                            onDownloadComplete = ::showDownloadFinished,
+                            onDuplicateBlob = { existing, suggested, mime, temp ->
+                                downloadPopup = null
+                                duplicateDownload = DuplicateDownloadPrompt.BlobTemp(existing, suggested, mime, temp)
+                            },
+                            onBlocked = onBlocked,
+                            onDnsResolved = onDnsResolved,
+                            onPrintRequest = onPrintRequest,
+                            onHttpError = { failedUrl, statusCode ->
+                                if (isActive && statusCode in listOf(404, 410, 502, 504)) {
+                                    WaybackResolver.checkAvailability(failedUrl) { result ->
+                                        if (result != null && (activeTab?.url == failedUrl || loadedUrls[idx] == failedUrl)) {
+                                            waybackSnapshot = result
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .zIndex(layerZ)
+                                .graphicsLayer {
+                                    alpha = when {
+                                        isActive -> if (isTransitionPending) 0.005f else incomingAlpha.value
+                                        isOutgoing -> 1f
+                                        else -> 0f
+                                    }
+                                },
+                        )
+                    }
+                }
             }
             if (isEditing) {
                 Suggestions(
@@ -596,17 +669,19 @@ fun BrowserScreen(
                         editing = false
                         keyboard?.hide()
                     },
+                    modifier = Modifier.zIndex(2f),
                 )
             }
             if (activeProgress < 100 && !isEditing) {
-                LightningLoadingIndicator(Modifier.fillMaxSize())
+                LightningLoadingIndicator(Modifier.fillMaxSize().zIndex(2f))
             }
             androidx.compose.animation.AnimatedVisibility(
                 visible = duplicateTabWarning != null && !isEditing && !finding && waybackSnapshot == null && downloadPopup == null,
-                enter = slideInVertically(tween(220)) { it } + fadeIn(tween(220)),
-                exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(180)),
+                enter = slideInVertically(tween(170)) { it / 2 } + fadeIn(tween(150)),
+                exit = slideOutVertically(tween(150)) { it / 2 } + fadeOut(tween(140)),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .zIndex(3f)
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
                 duplicateTabWarning?.let { warning ->
@@ -623,6 +698,7 @@ fun BrowserScreen(
                 exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(180)),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .zIndex(3f)
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
                 ClipboardUrlFloatingBanner(
@@ -636,6 +712,7 @@ fun BrowserScreen(
                 exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(180)),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .zIndex(3f)
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
                 waybackSnapshot?.let { snapshot ->
@@ -665,6 +742,7 @@ fun BrowserScreen(
                 exit = slideOutVertically(tween(180)) { it } + fadeOut(tween(180)),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .zIndex(3f)
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
                 downloadPopup?.let { popup ->
@@ -1400,10 +1478,13 @@ private const val DOWNLOAD_INTERCEPT_SCRIPT = """
 })();
 """
 
+@SuppressLint("ClickableViewAccessibility")
 @Composable
 private fun BrowserPage(
     tab: BrowserTab,
     index: Int,
+    isActive: Boolean,
+    isVisibleLayer: Boolean,
     adBlocking: Boolean,
     dnsEndpoint: String?,
     bypassTrusted: Boolean,
@@ -1412,6 +1493,7 @@ private fun BrowserPage(
     onProgress: (Int) -> Unit,
     onNavChange: (Boolean, Boolean) -> Unit,
     onUrlChange: (String) -> Unit,
+    onDuplicateCheckCandidate: (String) -> Unit,
     onScrolled: (Int, Int) -> Unit,
     onPageMeta: (String, String, String) -> Unit,
     onDownload: (String, String?, String?, String?) -> Unit,
@@ -1432,8 +1514,11 @@ private fun BrowserPage(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.MATCH_PARENT,
                 )
-                val config = WebConfig(tab, adBlocking, dnsEndpoint, bypassTrusted)
+                val config = WebConfig(tab, adBlocking, dnsEndpoint, bypassTrusted).apply {
+                    this.isActive = isActive
+                }
                 tag = config
+                setOnTouchListener { _, _ -> !config.isActive }
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.allowContentAccess = true
@@ -1603,17 +1688,20 @@ private fun BrowserPage(
 
                     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                         val target = request?.url ?: return false
-                        if (!config.adBlocking || !request.isForMainFrame) return false
-                        if (request.hasGesture() && !request.isRedirect) return false
-                        val host = target.host.orEmpty()
-                        if (AdBlocker.isAdHost(host, context)) {
-                            config.onBlocked()
-                            return true
+                        if (config.adBlocking && request.isForMainFrame && !(request.hasGesture() && !request.isRedirect)) {
+                            val host = target.host.orEmpty()
+                            if (AdBlocker.isAdHost(host, context)) {
+                                config.onBlocked()
+                                return true
+                            }
+                            val scheme = target.scheme.orEmpty()
+                            if (scheme != "http" && scheme != "https" && scheme != "about" && scheme != "blob" && scheme != "data") {
+                                config.onBlocked()
+                                return true
+                            }
                         }
-                        val scheme = target.scheme.orEmpty()
-                        if (scheme != "http" && scheme != "https" && scheme != "about" && scheme != "blob" && scheme != "data") {
-                            config.onBlocked()
-                            return true
+                        if (request.isForMainFrame && !request.isRedirect) {
+                            view?.post { config.onDuplicateCheckCandidate(target.toString()) }
                         }
                         return false
                     }
@@ -1621,6 +1709,7 @@ private fun BrowserPage(
                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                         super.onPageStarted(view, url, favicon)
                         url?.let { config.onUrlChange(it) }
+                        config.onNavChange(view?.canGoBack() ?: false, view?.canGoForward() ?: false)
                         if (config.desktopMode && view != null) {
                             view.evaluateJavascript(desktopViewportScript(view), null)
                         }
@@ -1637,6 +1726,7 @@ private fun BrowserPage(
                         if (config.desktopMode && view != null) {
                             view.evaluateJavascript(desktopViewportScript(view), null)
                         }
+                        view?.post { config.onNavChange(view.canGoBack(), view.canGoForward()) }
                         view?.invalidate()
                     }
 
@@ -1655,6 +1745,8 @@ private fun BrowserPage(
                     override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                         super.doUpdateVisitedHistory(view, url, isReload)
                         url?.let { config.onUrlChange(it) }
+                        config.onNavChange(view?.canGoBack() ?: false, view?.canGoForward() ?: false)
+                        view?.post { config.onNavChange(view.canGoBack(), view.canGoForward()) }
                     }
 
                     override fun onPageFinished(view: WebView?, url: String?) {
@@ -1686,30 +1778,27 @@ private fun BrowserPage(
                 }
             }).also { wv ->
                 (wv.parent as? ViewGroup)?.removeView(wv)
-                wv.onResume()
-                wv.post {
-                    wv.requestLayout()
-                    wv.scrollBy(0, 1)
-                    wv.scrollBy(0, -1)
-                    wv.invalidate()
-                }
-                wv.postDelayed({
-                    wv.scrollBy(0, 1)
-                    wv.scrollBy(0, -1)
-                    wv.invalidate()
-                }, 80L)
+                wv.visibility = if (isVisibleLayer) View.VISIBLE else View.INVISIBLE
+                if (isActive) wv.onResume() else if (!isVisibleLayer) wv.onPause()
             }
         },
         update = { wv ->
-            wv.onResume()
-            wv.post {
-                wv.scrollBy(0, 1)
-                wv.scrollBy(0, -1)
-                wv.invalidate()
+            val targetVis = if (isVisibleLayer) View.VISIBLE else View.INVISIBLE
+            if (wv.visibility != targetVis) {
+                wv.visibility = targetVis
+                if (targetVis == View.VISIBLE) {
+                    wv.invalidate()
+                }
+            }
+            if (isActive) {
+                wv.onResume()
+            } else if (!isVisibleLayer) {
+                wv.onPause()
             }
             (wv.tag as? WebConfig)?.let { config ->
                 val desktopChanged = config.desktopMode != tab.desktopMode
                 config.tab = tab
+                config.isActive = isActive
                 config.adBlocking = adBlocking
                 config.dnsEndpoint = dnsEndpoint
                 config.bypassTrusted = bypassTrusted
@@ -1717,6 +1806,7 @@ private fun BrowserPage(
                 config.onNavChange = onNavChange
                 config.onScrolled = onScrolled
                 config.onUrlChange = onUrlChange
+                config.onDuplicateCheckCandidate = onDuplicateCheckCandidate
                 config.onPageMeta = onPageMeta
                 config.onDownload = onDownload
                 config.onDownloadStart = onDownloadStart
@@ -1733,11 +1823,14 @@ private fun BrowserPage(
                     }
                 }
             }
-            wv.onResume()
-            onNavChange(wv.canGoBack(), wv.canGoForward())
         },
         modifier = modifier,
     )
+    LaunchedEffect(index, tab.id, isActive, webViews[index]) {
+        webViews[index]?.let { wv ->
+            onNavChange(wv.canGoBack(), wv.canGoForward())
+        }
+    }
     LaunchedEffect(index, tab.url, webViews[index]) {
         val view = webViews[index] ?: return@LaunchedEffect
         val target = tab.url

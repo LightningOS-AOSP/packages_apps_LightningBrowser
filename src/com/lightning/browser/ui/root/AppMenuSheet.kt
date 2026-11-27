@@ -138,6 +138,11 @@ fun AppMenuSheet(
                             onOpen(LightningScreen.SAVED_PAGES)
                         },
                     )
+                    add(
+                        MenuAction(Icons.Filled.History, stringResource(R.string.tabs_recently_closed_header)) {
+                            onOpen(LightningScreen.RECENTLY_CLOSED)
+                        },
+                    )
                 }
                 add(
                     MenuAction(Icons.Filled.Bookmark, stringResource(R.string.bookmarks_title)) {

@@ -266,4 +266,6 @@
     <string name="tabs_recently_closed_clear">Clear</string>
     <string name="tabs_recently_closed_note">Keeps up to 10 closed tabs · Expires after 24 hours</string>
     <string name="tabs_recently_closed_just_now">Just now</string>
+    <string name="tabs_recently_closed_search_hint">Search recently closed</string>
+    <string name="tabs_recently_closed_empty">No recently closed tabs</string>
 </resources>

@@ -28,11 +28,13 @@ class WebConfig(
     var userAgent: String? = null
     var defaultUserAgent: String? = null
     var desktopMode: Boolean = tab.desktopMode
+    var isActive: Boolean = true
     var fullscreen: FullscreenVideo? = null
     var onProgress: (Int) -> Unit = {}
     var onNavChange: (Boolean, Boolean) -> Unit = { _, _ -> }
     var onScrolled: (Int, Int) -> Unit = { _, _ -> }
     var onUrlChange: (String) -> Unit = {}
+    var onDuplicateCheckCandidate: (String) -> Unit = {}
     var onPageMeta: (String, String, String) -> Unit = { _, _, _ -> }
     var onDownload: (String, String?, String?, String?) -> Unit = { _, _, _, _ -> }
     var onDownloadStart: (String) -> Unit = {}
