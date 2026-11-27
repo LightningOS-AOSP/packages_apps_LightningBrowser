@@ -536,6 +536,19 @@ fun LightningBrowserRoot(
         screen = LightningScreen.BROWSER
     }
 
+    fun openSavedPage(title: String, uri: String) {
+        val existingEmpty = tabs.indexOfFirst { it.url.isEmpty() }
+        if (existingEmpty >= 0) {
+            tabs[existingEmpty] = tabs[existingEmpty].copy(title = title, domain = "Saved offline", url = uri)
+            activeIndex = existingEmpty
+        } else {
+            tabs.add(BrowserTab(title = title, domain = "Saved offline", url = uri, private = incognito))
+            activeIndex = tabs.size - 1
+        }
+        screenBackStack.clear()
+        screen = LightningScreen.BROWSER
+    }
+
     LaunchedEffect(initialUrl) {
         if (!initialUrl.isNullOrBlank()) {
             openSite(initialUrl)
@@ -755,6 +768,7 @@ fun LightningBrowserRoot(
                         },
                     )
                     LightningScreen.SAVED_PAGES -> SavedPagesScreen(
+                        onOpenPage = { title, uri -> openSavedPage(title, uri) },
                         onBack = { navigateBack(LightningScreen.TABS) },
                     )
                     LightningScreen.PRINT -> PrintScreen(

@@ -55,6 +55,7 @@ import kotlinx.coroutines.withContext
 
 @Composable
 fun SavedPagesScreen(
+    onOpenPage: (title: String, uri: String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -132,7 +133,14 @@ fun SavedPagesScreen(
                     SavedPageCard(
                         item = item,
                         index = index,
-                        onOpen = { BrowserDownloads.openDownload(context, item) },
+                        onOpen = {
+                            val uri = BrowserDownloads.savedPageUri(context, item)
+                            if (uri != null) {
+                                onOpenPage(savedPageTitle(item.title), uri)
+                            } else {
+                                BrowserDownloads.openDownload(context, item)
+                            }
+                        },
                         onDelete = {
                             haptics.reject()
                             BrowserDownloads.deleteWithStorage(context, item)

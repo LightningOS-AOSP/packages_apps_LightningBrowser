@@ -447,14 +447,19 @@ fun BrowserScreen(
                         if (url.isNotBlank() && url != "about:blank") {
                             loadedUrls[activeIndex] = url
                             val current = tabs.getOrNull(activeIndex) ?: activeTab
-                            onUpdateTab(activeIndex, current.copy(url = url, domain = hostOf(url)))
+                            val isLocal = url.startsWith("content://") || url.startsWith("file://")
+                            val domain = if (isLocal) current.domain else hostOf(url)
+                            onUpdateTab(activeIndex, current.copy(url = url, domain = domain))
                         }
                     },
                     onPageMeta = { title, domain, url ->
                         loadedUrls[activeIndex] = url
                         val current = tabs.getOrNull(activeIndex) ?: activeTab
-                        onUpdateTab(activeIndex, current.copy(title = title, domain = domain, url = url))
-                        if (!current.private) onRecordVisit(title, domain)
+                        val isLocal = url.startsWith("content://") || url.startsWith("file://")
+                        val resolvedDomain = if (isLocal) current.domain else domain
+                        val resolvedTitle = if (isLocal && title.isBlank()) current.title else title
+                        onUpdateTab(activeIndex, current.copy(title = resolvedTitle, domain = resolvedDomain, url = url))
+                        if (!current.private && !isLocal) onRecordVisit(title, domain)
                     },
                     onDownload = ::startDownload,
                     onDownloadStart = ::showDownloadStarted,
@@ -1148,6 +1153,8 @@ private fun BrowserPage(
                 tag = config
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                settings.allowContentAccess = true
+                settings.allowFileAccess = true
                 if (tab.private) {
                     settings.setSaveFormData(false)
                     settings.cacheMode = WebSettings.LOAD_NO_CACHE

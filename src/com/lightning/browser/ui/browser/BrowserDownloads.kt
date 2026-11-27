@@ -664,6 +664,9 @@ object BrowserDownloads {
         return null
     }
 
+    fun savedPageUri(context: Context, item: DownloadItem): String? =
+        resolveDownloadUri(context, item)?.first?.toString()
+
     fun openDownload(context: Context, item: DownloadItem) {
         val (uri, mime) = resolveDownloadUri(context, item) ?: run {
             locateDownload(context)
