@@ -34,6 +34,7 @@ object BrowserStore {
     private const val KEY_STARTUP = "startup_behavior"
     private const val KEY_HIDDEN_DOWNLOADS = "hidden_downloads"
     private const val KEY_DOWNLOADS = "browser_downloads"
+    private const val KEY_DEFAULT_BROWSER_PROMPTED = "default_browser_prompted"
     private const val MAX_HISTORY = 200
     private const val MAX_DOWNLOADS = 200
     private const val MAX_SEARCHES = 10
@@ -314,6 +315,13 @@ object BrowserStore {
                 .put("timestamp", item.timestamp))
         }
         prefs(context).edit().putString(KEY_DOWNLOADS, array.toString()).apply()
+    }
+
+    fun hasPromptedDefaultBrowser(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DEFAULT_BROWSER_PROMPTED, false)
+
+    fun setDefaultBrowserPrompted(context: Context, prompted: Boolean = true) {
+        prefs(context).edit().putBoolean(KEY_DEFAULT_BROWSER_PROMPTED, prompted).apply()
     }
 
     fun loadHiddenDownloads(context: Context): Set<String> =

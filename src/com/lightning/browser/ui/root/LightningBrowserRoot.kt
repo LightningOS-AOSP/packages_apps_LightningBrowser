@@ -6,6 +6,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.webkit.CookieManager
 import android.webkit.WebStorage
 import android.webkit.WebView
@@ -39,6 +42,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -49,6 +53,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -116,7 +121,10 @@ enum class LightningScreen {
 }
 
 @Composable
-fun LightningBrowserRoot(incognito: Boolean = false) {
+fun LightningBrowserRoot(
+    incognito: Boolean = false,
+    initialUrl: String? = null,
+) {
     val context = LocalContext.current
 
     val initialTabs = remember {
@@ -203,6 +211,15 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
     var showClearData by remember { mutableStateOf(false) }
     var showAddPinned by remember { mutableStateOf(false) }
     var pinnedDraft by remember { mutableStateOf("") }
+    var showDefaultBrowserPrompt by remember {
+        mutableStateOf(
+            if (!incognito && !BrowserStore.hasPromptedDefaultBrowser(context)) {
+                !isDefaultBrowser(context)
+            } else {
+                false
+            }
+        )
+    }
 
     LaunchedEffect(tabs) {
         snapshotFlow { tabs.toList() }.distinctUntilChanged().collect {
@@ -342,6 +359,16 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
         screenBackStack.clear()
         screen = LightningScreen.BROWSER
     }
+
+    LaunchedEffect(initialUrl) {
+        if (!initialUrl.isNullOrBlank()) {
+            openSite(initialUrl)
+        }
+    }
+
+    val defaultBrowserLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { }
 
     val authLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
@@ -731,6 +758,19 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
                     },
                 )
             }
+            if (showDefaultBrowserPrompt) {
+                DefaultBrowserPromptDialog(
+                    onDismiss = {
+                        BrowserStore.setDefaultBrowserPrompted(context, true)
+                        showDefaultBrowserPrompt = false
+                    },
+                    onConfirm = {
+                        BrowserStore.setDefaultBrowserPrompted(context, true)
+                        showDefaultBrowserPrompt = false
+                        openDefaultBrowserSettings(context, defaultBrowserLauncher)
+                    },
+                )
+            }
             if (locked) {
                 LockScreen(
                     error = authError,
@@ -739,6 +779,115 @@ fun LightningBrowserRoot(incognito: Boolean = false) {
             }
         }
     }
+}
+
+private fun isDefaultBrowser(context: Context): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val roleManager = context.getSystemService(android.app.role.RoleManager::class.java)
+        if (roleManager != null && roleManager.isRoleAvailable(android.app.role.RoleManager.ROLE_BROWSER)) {
+            return roleManager.isRoleHeld(android.app.role.RoleManager.ROLE_BROWSER)
+        }
+    }
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com"))
+    val resolveInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        context.packageManager.resolveActivity(
+            intent,
+            android.content.pm.PackageManager.ResolveInfoFlags.of(android.content.pm.PackageManager.MATCH_DEFAULT_ONLY.toLong()),
+        )
+    } else {
+        @Suppress("DEPRECATION")
+        context.packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+    }
+    val currentDefaultPackage = resolveInfo?.activityInfo?.packageName
+    return currentDefaultPackage == context.packageName
+}
+
+private fun openDefaultBrowserSettings(
+    context: Context,
+    launcher: androidx.activity.result.ActivityResultLauncher<Intent>,
+) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val roleManager = context.getSystemService(android.app.role.RoleManager::class.java)
+        if (roleManager != null &&
+            roleManager.isRoleAvailable(android.app.role.RoleManager.ROLE_BROWSER) &&
+            !roleManager.isRoleHeld(android.app.role.RoleManager.ROLE_BROWSER)
+        ) {
+            val intent = roleManager.createRequestRoleIntent(android.app.role.RoleManager.ROLE_BROWSER)
+            runCatching { launcher.launch(intent) }.onSuccess { return }
+        }
+    }
+    val settingsIntent = Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS).apply {
+        if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    runCatching { context.startActivity(settingsIntent) }.onFailure {
+        val appDetails = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")).apply {
+            if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { context.startActivity(appDetails) }
+    }
+}
+
+@Composable
+private fun DefaultBrowserPromptDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    AlertDialog(
+        onDismissRequest = {},
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+        ),
+        icon = {
+            ShapedIcon(
+                icon = Icons.Filled.Language,
+                shape = ExpressiveShapes.Cookie9,
+                container = colors.primaryContainer,
+                content = colors.onPrimaryContainer,
+                size = 48.dp,
+                iconSize = 24.dp,
+            )
+        },
+        title = {
+            Text(
+                text = stringResource(R.string.default_browser_prompt_title),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = colors.onSurface,
+            )
+        },
+        text = {
+            Text(
+                text = stringResource(R.string.default_browser_prompt_message),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.onSurfaceVariant,
+            )
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(
+                    text = stringResource(R.string.default_browser_prompt_dismiss),
+                    color = colors.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.primary,
+                    contentColor = colors.onPrimary,
+                ),
+            ) {
+                Text(
+                    text = stringResource(R.string.default_browser_prompt_confirm),
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        },
+    )
 }
 
 @Composable
