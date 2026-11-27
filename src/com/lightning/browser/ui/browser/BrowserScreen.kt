@@ -214,6 +214,7 @@ fun BrowserScreen(
     onRecordVisit: (String, String) -> Unit = { _, _ -> },
     onSearchSubmitted: (String) -> Unit = {},
     onOpenDownloads: () -> Unit = {},
+    onPrintRequest: () -> Unit = {},
     onBackHome: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -464,6 +465,7 @@ fun BrowserScreen(
                     },
                     onBlocked = onBlocked,
                     onDnsResolved = onDnsResolved,
+                    onPrintRequest = onPrintRequest,
                     onHttpError = { failedUrl, statusCode ->
                         if (statusCode in listOf(404, 410, 502, 504)) {
                             WaybackResolver.checkAvailability(failedUrl) { result ->
@@ -1131,6 +1133,7 @@ private fun BrowserPage(
     onBlocked: () -> Unit,
     onDnsResolved: () -> Unit,
     onHttpError: (String, Int) -> Unit,
+    onPrintRequest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
@@ -1165,6 +1168,16 @@ private fun BrowserPage(
                         },
                     ),
                     "LightningBlobBridge",
+                )
+                addJavascriptInterface(
+                    object {
+                        @JavascriptInterface
+                        @Keep
+                        fun print() {
+                            post { config.onPrintRequest() }
+                        }
+                    },
+                    "LightningPrintBridge",
                 )
                 setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
                     config.onScrolled(scrollY, scrollY - oldScrollY)
@@ -1322,6 +1335,10 @@ private fun BrowserPage(
                             view.evaluateJavascript(desktopViewportScript(view), null)
                         }
                         view?.evaluateJavascript(DOWNLOAD_INTERCEPT_SCRIPT, null)
+                        view?.evaluateJavascript(
+                            "window.print = function() { if (window.LightningPrintBridge) window.LightningPrintBridge.print(); };",
+                            null,
+                        )
                         if (config.adBlocking) view?.evaluateJavascript(CosmeticFilter.SCRIPT, null)
                     }
 
@@ -1355,6 +1372,10 @@ private fun BrowserPage(
                             view.evaluateJavascript(desktopViewportScript(view), null)
                         }
                         view?.evaluateJavascript(DOWNLOAD_INTERCEPT_SCRIPT, null)
+                        view?.evaluateJavascript(
+                            "window.print = function() { if (window.LightningPrintBridge) window.LightningPrintBridge.print(); };",
+                            null,
+                        )
                         if (config.adBlocking) view?.evaluateJavascript(CosmeticFilter.SCRIPT, null)
                         val current = config.tab
                         val host = runCatching { Uri.parse(url).host }.getOrNull()?.takeIf { it.isNotEmpty() } ?: current.domain
@@ -1395,6 +1416,7 @@ private fun BrowserPage(
                 config.onBlocked = onBlocked
                 config.onDnsResolved = onDnsResolved
                 config.onHttpError = onHttpError
+                config.onPrintRequest = onPrintRequest
                 if (desktopChanged) {
                     applyDesktopMode(wv, config, tab.desktopMode)
                     if (tab.url.isNotEmpty()) {

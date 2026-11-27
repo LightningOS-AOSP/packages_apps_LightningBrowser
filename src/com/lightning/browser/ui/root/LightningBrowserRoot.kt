@@ -93,6 +93,7 @@ import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.browser.BrowserDownloads
 import com.lightning.browser.ui.browser.BrowserScreen
+import com.lightning.browser.ui.browser.PrintScreen
 import com.lightning.browser.ui.browser.TabNavState
 import com.lightning.browser.ui.home.HomeScreen
 import com.lightning.browser.ui.home.PinnedSite
@@ -126,7 +127,7 @@ import com.lightning.browser.ui.theme.rememberLightningHaptics
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 enum class LightningScreen {
-    HOME, TABS, SAVED_PAGES, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT, BOOKMARKS, HISTORY,
+    HOME, TABS, SAVED_PAGES, PRINT, SETTINGS, APPEARANCE, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT, BOOKMARKS, HISTORY,
     SITE_PERMISSIONS, BROWSER, STARTUP
 }
 
@@ -228,6 +229,7 @@ fun LightningBrowserRoot(
         mutableStateListOf<PinnedSite>().apply { if (!incognito) addAll(BrowserStore.loadPinnedSites(context)) }
     }
     var showMenu by remember { mutableStateOf(false) }
+    var printPreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showQuickArc by remember { mutableStateOf(false) }
     var tabsReturnScreen by remember { mutableStateOf(LightningScreen.HOME) }
     var pendingBookmarkTab by remember { mutableStateOf<BrowserTab?>(null) }
@@ -382,7 +384,71 @@ fun LightningBrowserRoot(
         Toast.makeText(context, R.string.menu_copy_url_copied, Toast.LENGTH_SHORT).show()
     }
 
-    fun printCurrentPage() {
+    fun savePageAsPdf(
+        mediaSize: PrintAttributes.MediaSize,
+        monochrome: Boolean,
+        selectedPages: Set<Int>,
+    ) {
+        val webView = webViews[activeIndex] ?: return
+        val tab = tabs.getOrNull(activeIndex) ?: return
+        if (webView.width <= 0 || webView.height <= 0) return
+
+        val widthPt = (mediaSize.widthMils * 72f / 1000f).toInt().coerceAtLeast(100)
+        val heightPt = (mediaSize.heightMils * 72f / 1000f).toInt().coerceAtLeast(100)
+        val fullContentPx = (webView.contentHeight * webView.scale).toInt().coerceAtLeast(webView.height)
+        val scale = widthPt.toFloat() / webView.width.toFloat()
+        val slicePx = (heightPt / scale).coerceAtLeast(1f)
+        val totalPages = kotlin.math.ceil(fullContentPx / slicePx).toInt().coerceIn(1, 50)
+        val pagesToWrite = selectedPages.filter { it in 1..totalPages }.sorted()
+            .ifEmpty { listOf(1) }
+
+        val pdf = android.graphics.pdf.PdfDocument()
+        val monoPaint = if (monochrome) {
+            android.graphics.Paint().apply {
+                colorFilter = android.graphics.ColorMatrixColorFilter(
+                    android.graphics.ColorMatrix().apply { setSaturation(0f) },
+                )
+            }
+        } else {
+            null
+        }
+
+        pagesToWrite.forEachIndexed { idx, pageNumber ->
+            val info = android.graphics.pdf.PdfDocument.PageInfo.Builder(widthPt, heightPt, idx + 1).create()
+            val page = pdf.startPage(info)
+            val canvas = page.canvas
+            val layer = if (monoPaint != null) {
+                canvas.saveLayer(0f, 0f, widthPt.toFloat(), heightPt.toFloat(), monoPaint)
+            } else {
+                canvas.save()
+            }
+            canvas.scale(scale, scale)
+            canvas.translate(0f, -((pageNumber - 1) * slicePx))
+            webView.draw(canvas)
+            canvas.restoreToCount(layer)
+            pdf.finishPage(page)
+        }
+
+        val baos = java.io.ByteArrayOutputStream()
+        runCatching { pdf.writeTo(baos) }
+        pdf.close()
+
+        val bytes = baos.toByteArray()
+        if (bytes.isEmpty()) {
+            Toast.makeText(context, R.string.menu_save_offline_failed, Toast.LENGTH_SHORT).show()
+            return
+        }
+        BrowserDownloads.savePdfBytes(context, tab.title, tab.domain, bytes) { savedName ->
+            val message = if (savedName != null) {
+                context.getString(R.string.menu_save_offline_saved, savedName)
+            } else {
+                context.getString(R.string.menu_save_offline_failed)
+            }
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun printCurrentPage(attributes: PrintAttributes = PrintAttributes.Builder().build()) {
         val webView = webViews[activeIndex] ?: return
         val printManager = context.getSystemService(Context.PRINT_SERVICE) as? PrintManager ?: return
         val jobName = tabs.getOrNull(activeIndex)?.title
@@ -391,8 +457,28 @@ fun LightningBrowserRoot(
         printManager.print(
             jobName,
             webView.createPrintDocumentAdapter(jobName),
-            PrintAttributes.Builder().build(),
+            attributes,
         )
+    }
+
+    fun openPrintSheet() {
+        val wv = webViews[activeIndex]
+        printPreviewBitmap = if (wv != null && wv.width > 0 && wv.height > 0) {
+            runCatching {
+                val scale = (360f / wv.width).coerceAtMost(0.5f)
+                val fullHeightPx = (wv.contentHeight * wv.scale).toInt().coerceIn(wv.height, 4096)
+                val w = (wv.width * scale).toInt().coerceAtLeast(1)
+                val h = (fullHeightPx * scale).toInt().coerceAtLeast(1)
+                Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { bmp ->
+                    val canvas = android.graphics.Canvas(bmp)
+                    canvas.scale(scale, scale)
+                    wv.draw(canvas)
+                }
+            }.getOrNull()
+        } else {
+            null
+        }
+        navigateTo(LightningScreen.PRINT)
     }
 
     fun saveOfflinePage() {
@@ -519,6 +605,7 @@ fun LightningBrowserRoot(
             }
             LightningScreen.SITE_PERMISSIONS -> navigateBack(LightningScreen.PRIVACY)
             LightningScreen.SAVED_PAGES -> navigateBack(LightningScreen.TABS)
+            LightningScreen.PRINT -> navigateBack(LightningScreen.BROWSER)
             else -> navigateBack(LightningScreen.SETTINGS)
         }
     }
@@ -582,6 +669,7 @@ fun LightningBrowserRoot(
                         },
                         onSearchSubmitted = { recordSearch(it) },
                         onOpenDownloads = { navigateTo(LightningScreen.DOWNLOADS) },
+                        onPrintRequest = { openPrintSheet() },
                         onBackHome = {
                             captureTabThumbnail(activeIndex)
                             screen = LightningScreen.HOME
@@ -668,6 +756,14 @@ fun LightningBrowserRoot(
                     )
                     LightningScreen.SAVED_PAGES -> SavedPagesScreen(
                         onBack = { navigateBack(LightningScreen.TABS) },
+                    )
+                    LightningScreen.PRINT -> PrintScreen(
+                        pageTitle = tabs.getOrNull(activeIndex)?.title.orEmpty(),
+                        pageDomain = tabs.getOrNull(activeIndex)?.domain.orEmpty(),
+                        previewBitmap = printPreviewBitmap,
+                        onBack = { navigateBack(LightningScreen.BROWSER) },
+                        onSavePdf = { mediaSize, mono, pages -> savePageAsPdf(mediaSize, mono, pages) },
+                        onPrint = { attrs -> printCurrentPage(attrs) },
                     )
                     LightningScreen.BROWSER -> Unit
                     LightningScreen.SETTINGS -> SettingsRootScreen(
@@ -844,7 +940,7 @@ fun LightningBrowserRoot(
                         tabs[activeIndex] = tab.copy(desktopMode = !tab.desktopMode)
                     }
                 },
-                onPrint = { printCurrentPage() },
+                onPrint = { openPrintSheet() },
                 onSaveOffline = { saveOfflinePage() },
                 onIncognito = { context.startActivity(Intent(context, IncognitoActivity::class.java)) },
                 incognito = incognito,

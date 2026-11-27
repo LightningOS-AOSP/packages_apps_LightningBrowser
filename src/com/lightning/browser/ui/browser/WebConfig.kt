@@ -41,4 +41,5 @@ class WebConfig(
     var onBlocked: () -> Unit = {}
     var onDnsResolved: () -> Unit = {}
     var onHttpError: (url: String, statusCode: Int) -> Unit = { _, _ -> }
+    var onPrintRequest: () -> Unit = {}
 }

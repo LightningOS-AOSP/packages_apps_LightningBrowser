@@ -492,6 +492,34 @@ object BrowserDownloads {
         }.start()
     }
 
+    fun savePdfBytes(
+        context: Context,
+        title: String,
+        domain: String,
+        pdfBytes: ByteArray,
+        onResult: (String?) -> Unit,
+    ) {
+        val appContext = context.applicationContext
+        val rawBase = title.ifBlank { domain }.ifBlank { "page" }
+        val base = sanitize(rawBase).removeSuffix(".pdf").ifBlank { "page" }
+        val candidate = "$base.pdf"
+        Thread {
+            val savedName = runCatching {
+                val finalName = nextAvailableName(appContext, candidate)
+                val uri = saveFileToDownloads(appContext, finalName, "application/pdf", pdfBytes)
+                if (uri != null) {
+                    BrowserStore.unhideDownload(appContext, finalName)
+                    finalName
+                } else {
+                    null
+                }
+            }.getOrNull()
+            Handler(Looper.getMainLooper()).post {
+                onResult(savedName)
+            }
+        }.start()
+    }
+
     private fun saveFileToDownloads(
         context: Context,
         fileName: String,
