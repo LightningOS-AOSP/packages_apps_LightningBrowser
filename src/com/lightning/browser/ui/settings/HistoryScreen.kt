@@ -19,6 +19,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -74,8 +75,11 @@ fun HistoryScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     GroupedColumn(entries.size) { i, shape ->
-                        SwipeToDeleteBox(onDelete = { onDelete(entries[i]) }, shape = shape) {
-                            HistoryRow(entries[i], shape = shape, index = i)
+                        val entry = entries[i]
+                        key(entry) {
+                            SwipeToDeleteBox(onDelete = { onDelete(entry) }, shape = shape) {
+                                HistoryRow(entry, shape = shape, index = i)
+                            }
                         }
                     }
                     Spacer(Modifier.height(20.dp))

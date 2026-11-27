@@ -25,6 +25,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -113,13 +114,16 @@ fun BookmarksScreen(
                         it.domain.contains(query, ignoreCase = true)
                 }
                 GroupedColumn(visible.size) { i, shape ->
-                    SwipeToDeleteBox(onDelete = { onDelete(visible[i]) }, shape = shape) {
-                        BookmarkRow(
-                            bookmark = visible[i],
-                            onClick = { onOpen(visible[i]) },
-                            shape = shape,
-                            index = i,
-                        )
+                    val bookmark = visible[i]
+                    key(bookmark) {
+                        SwipeToDeleteBox(onDelete = { onDelete(bookmark) }, shape = shape) {
+                            BookmarkRow(
+                                bookmark = bookmark,
+                                onClick = { onOpen(bookmark) },
+                                shape = shape,
+                                index = i,
+                            )
+                        }
                     }
                 }
             }
@@ -141,13 +145,15 @@ fun BookmarksScreen(
                     )
                 } else {
                     val bookmark = rootList[i - folders.size]
-                    SwipeToDeleteBox(onDelete = { onDelete(bookmark) }, shape = shape) {
-                        BookmarkRow(
-                            bookmark = bookmark,
-                            onClick = { onOpen(bookmark) },
-                            shape = shape,
-                            index = i,
-                        )
+                    key(bookmark) {
+                        SwipeToDeleteBox(onDelete = { onDelete(bookmark) }, shape = shape) {
+                            BookmarkRow(
+                                bookmark = bookmark,
+                                onClick = { onOpen(bookmark) },
+                                shape = shape,
+                                index = i,
+                            )
+                        }
                     }
                 }
             }
