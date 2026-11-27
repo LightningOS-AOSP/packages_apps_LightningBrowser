@@ -1,5 +1,7 @@
 package com.lightning.browser.ui.settings
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,12 +14,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -28,16 +37,22 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.lightning.browser.R
 import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.components.ShapedIcon
@@ -59,8 +74,10 @@ fun DownloadsScreen(
     val context = LocalContext.current
     var items by remember { mutableStateOf(emptyList<DownloadItem>()) }
     var hasAccess by remember { mutableStateOf(BrowserDownloads.hasFileAccess(context)) }
+    var refreshKey by remember { mutableIntStateOf(0) }
+    var selectedItem by remember { mutableStateOf<DownloadItem?>(null) }
 
-    LaunchedEffect(context) {
+    LaunchedEffect(context, refreshKey) {
         while (true) {
             items = BrowserDownloads.queryAll(context)
             hasAccess = BrowserDownloads.hasFileAccess(context)
@@ -96,10 +113,26 @@ fun DownloadsScreen(
                 )
                 Spacer(Modifier.height(4.dp))
                 GroupedColumn(list.size) { i, shape ->
+                    val entry = list[i]
                     DownloadRow(
-                        item = list[i],
-                        onPause = { BrowserDownloads.pause(context, list[i].downloadId) },
-                        onResume = { BrowserDownloads.resume(context, list[i].downloadId) },
+                        item = entry,
+                        onClick = { if (entry.state == DownloadState.COMPLETE) selectedItem = entry },
+                        onPause = {
+                            BrowserDownloads.pause(context, entry.downloadId)
+                            refreshKey++
+                        },
+                        onResume = {
+                            BrowserDownloads.resume(context, entry.downloadId)
+                            refreshKey++
+                        },
+                        onCancel = {
+                            BrowserDownloads.cancel(context, entry.downloadId)
+                            refreshKey++
+                        },
+                        onRetry = {
+                            BrowserDownloads.retry(context, entry.downloadId)
+                            refreshKey++
+                        },
                         shape = shape,
                         index = i,
                     )
@@ -107,6 +140,35 @@ fun DownloadsScreen(
                 Spacer(Modifier.height(20.dp))
             }
         }
+    }
+
+    selectedItem?.let { item ->
+        DownloadOptionsDialog(
+            item = item,
+            onDismiss = { selectedItem = null },
+            onOpen = {
+                selectedItem = null
+                BrowserDownloads.openDownload(context, item)
+            },
+            onLocate = {
+                selectedItem = null
+                BrowserDownloads.locateDownload(context)
+            },
+            onShare = {
+                selectedItem = null
+                BrowserDownloads.shareDownload(context, item)
+            },
+            onDeleteHistory = {
+                selectedItem = null
+                BrowserDownloads.deleteHistoryOnly(context, item)
+                refreshKey++
+            },
+            onDeleteBoth = {
+                selectedItem = null
+                BrowserDownloads.deleteWithStorage(context, item)
+                refreshKey++
+            },
+        )
     }
 }
 
@@ -198,14 +260,19 @@ private fun DownloadsEmpty() {
 @Composable
 private fun DownloadRow(
     item: DownloadItem,
+    onClick: () -> Unit = {},
     onPause: () -> Unit = {},
     onResume: () -> Unit = {},
+    onCancel: () -> Unit = {},
+    onRetry: () -> Unit = {},
     shape: Shape = ExpressiveShapes.grouped(0, 1),
     index: Int = 0,
 ) {
     val colors = LightningTheme.colors
     val tone = colors.tone(index % 3)
     Surface(
+        onClick = onClick,
+        enabled = item.state == DownloadState.COMPLETE,
         shape = shape,
         color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
@@ -227,11 +294,16 @@ private fun DownloadRow(
                         style = MaterialTheme.typography.bodyMedium,
                         color = colors.onSurface,
                         fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
+                    val missingLabel = stringResource(R.string.download_file_missing)
+                    val isMissing = item.detail == missingLabel
+                    val statusText = item.detail
                     Text(
-                        text = "${item.domain} · ${if (item.state != DownloadState.COMPLETE) item.progressPercent() else item.detail}",
+                        text = if (item.domain.isNotEmpty()) "${item.domain} · $statusText" else statusText,
                         style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
+                        color = if (isMissing) MaterialTheme.colorScheme.error else colors.onSurfaceVariant,
                     )
                 }
                 Spacer(Modifier.width(4.dp))
@@ -250,10 +322,18 @@ private fun DownloadRow(
                                 modifier = Modifier.size(20.dp),
                             )
                         }
+                        IconButton(onClick = onCancel, modifier = Modifier.size(36.dp)) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.download_cancel),
+                                tint = colors.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
                     DownloadState.PAUSED -> {
                         Text(
-                            text = "Paused",
+                            text = if (item.detail.startsWith("Waiting")) item.detail else "Paused",
                             style = MaterialTheme.typography.labelMedium,
                             color = colors.onSurfaceVariant,
                         )
@@ -265,21 +345,183 @@ private fun DownloadRow(
                                 modifier = Modifier.size(20.dp),
                             )
                         }
+                        IconButton(onClick = onCancel, modifier = Modifier.size(36.dp)) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.download_cancel),
+                                tint = colors.onSurfaceVariant,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
-                    DownloadState.COMPLETE -> Unit
+                    DownloadState.COMPLETE -> {
+                        if (item.detail == "Cancelled" || item.detail == "Failed") {
+                            IconButton(onClick = onRetry, modifier = Modifier.size(36.dp)) {
+                                Icon(
+                                    imageVector = Icons.Filled.Refresh,
+                                    contentDescription = stringResource(R.string.download_retry),
+                                    tint = colors.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                    }
                 }
             }
             if (item.state != DownloadState.COMPLETE) {
                 Spacer(Modifier.height(10.dp))
+                val animatedProgress by animateFloatAsState(
+                    targetValue = item.progress.coerceIn(0f, 1f),
+                    animationSpec = tween(250),
+                    label = "downloadProgress",
+                )
                 LinearProgressIndicator(
-                    progress = { item.progress },
+                    progress = { animatedProgress },
                     color = if (item.state == DownloadState.PAUSED) colors.onSurfaceVariant else colors.primary,
-                    trackColor = colors.surfaceContainerHigh,
+                    trackColor = colors.surfaceContainerHighest,
+                    strokeCap = StrokeCap.Round,
+                    gapSize = 0.dp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(4.dp),
+                        .height(8.dp)
+                        .clip(CircleShape),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun DownloadOptionsDialog(
+    item: DownloadItem,
+    onDismiss: () -> Unit,
+    onOpen: () -> Unit,
+    onLocate: () -> Unit,
+    onShare: () -> Unit,
+    onDeleteHistory: () -> Unit,
+    onDeleteBoth: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = colors.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ShapedIcon(
+                        icon = Icons.Filled.FileDownload,
+                        shape = ExpressiveShapes.Cookie9,
+                        container = colors.primaryContainer,
+                        content = colors.onPrimaryContainer,
+                        size = 44.dp,
+                        iconSize = 22.dp,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.onSurface,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = if (item.domain.isNotEmpty()) "${item.domain} · ${item.detail}" else item.detail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.onSurfaceVariant,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
+                val isMissing = item.detail == stringResource(R.string.download_file_missing)
+                if (isMissing) {
+                    GroupedColumn(1) { _, shape ->
+                        DownloadActionRow(
+                            icon = Icons.Filled.Delete,
+                            label = stringResource(R.string.download_action_delete_history),
+                            shape = shape,
+                            onClick = onDeleteHistory,
+                        )
+                    }
+                } else {
+                    GroupedColumn(5) { idx, shape ->
+                        when (idx) {
+                            0 -> DownloadActionRow(
+                                icon = Icons.AutoMirrored.Filled.OpenInNew,
+                                label = stringResource(R.string.download_action_open),
+                                shape = shape,
+                                onClick = onOpen,
+                            )
+                            1 -> DownloadActionRow(
+                                icon = Icons.Filled.FolderOpen,
+                                label = stringResource(R.string.download_action_locate),
+                                shape = shape,
+                                onClick = onLocate,
+                            )
+                            2 -> DownloadActionRow(
+                                icon = Icons.Filled.Share,
+                                label = stringResource(R.string.download_action_share),
+                                shape = shape,
+                                onClick = onShare,
+                            )
+                            3 -> DownloadActionRow(
+                                icon = Icons.Filled.Delete,
+                                label = stringResource(R.string.download_action_delete_history),
+                                shape = shape,
+                                onClick = onDeleteHistory,
+                            )
+                            4 -> DownloadActionRow(
+                                icon = Icons.Filled.DeleteForever,
+                                label = stringResource(R.string.download_action_delete_both),
+                                destructive = true,
+                                shape = shape,
+                                onClick = onDeleteBoth,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DownloadActionRow(
+    icon: ImageVector,
+    label: String,
+    shape: Shape,
+    destructive: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    val tint = if (destructive) MaterialTheme.colorScheme.error else colors.onSurface
+    Surface(
+        onClick = onClick,
+        shape = shape,
+        color = colors.surfaceContainerHighest,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = tint,
+                fontWeight = FontWeight.Medium,
+            )
         }
     }
 }

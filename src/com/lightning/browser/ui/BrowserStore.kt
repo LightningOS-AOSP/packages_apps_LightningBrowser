@@ -32,7 +32,10 @@ object BrowserStore {
     private const val KEY_TABS = "open_tabs"
     private const val KEY_ACTIVE_TAB = "active_tab_index"
     private const val KEY_STARTUP = "startup_behavior"
+    private const val KEY_HIDDEN_DOWNLOADS = "hidden_downloads"
+    private const val KEY_DOWNLOADS = "browser_downloads"
     private const val MAX_HISTORY = 200
+    private const val MAX_DOWNLOADS = 200
     private const val MAX_SEARCHES = 10
     private const val MAX_PINNED = 8
 
@@ -259,5 +262,73 @@ object BrowserStore {
 
     fun saveStartupBehavior(context: Context, behavior: StartupBehavior) {
         prefs(context).edit().putString(KEY_STARTUP, behavior.name).apply()
+    }
+
+    data class DownloadRecord(
+        val title: String,
+        val domain: String,
+        val sizeBytes: Long,
+        val timestamp: Long,
+    )
+
+    fun loadDownloads(context: Context): List<DownloadRecord> {
+        val raw = prefs(context).getString(KEY_DOWNLOADS, null) ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val entry = array.getJSONObject(i)
+                    add(DownloadRecord(
+                        title = entry.getString("title"),
+                        domain = entry.optString("domain", ""),
+                        sizeBytes = entry.optLong("sizeBytes", 0L),
+                        timestamp = entry.optLong("timestamp", 0L),
+                    ))
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun addDownload(context: Context, record: DownloadRecord) {
+        val current = loadDownloads(context).filterNot { it.title == record.title }
+        val updated = (listOf(record) + current).take(MAX_DOWNLOADS)
+        val array = JSONArray()
+        updated.forEach { item ->
+            array.put(JSONObject()
+                .put("title", item.title)
+                .put("domain", item.domain)
+                .put("sizeBytes", item.sizeBytes)
+                .put("timestamp", item.timestamp))
+        }
+        prefs(context).edit().putString(KEY_DOWNLOADS, array.toString()).apply()
+    }
+
+    fun removeDownload(context: Context, title: String) {
+        val updated = loadDownloads(context).filterNot { it.title == title }
+        val array = JSONArray()
+        updated.forEach { item ->
+            array.put(JSONObject()
+                .put("title", item.title)
+                .put("domain", item.domain)
+                .put("sizeBytes", item.sizeBytes)
+                .put("timestamp", item.timestamp))
+        }
+        prefs(context).edit().putString(KEY_DOWNLOADS, array.toString()).apply()
+    }
+
+    fun loadHiddenDownloads(context: Context): Set<String> =
+        prefs(context).getStringSet(KEY_HIDDEN_DOWNLOADS, emptySet())?.toSet() ?: emptySet()
+
+    fun hideDownload(context: Context, title: String) {
+        val updated = loadHiddenDownloads(context).toMutableSet().apply { add(title) }
+        prefs(context).edit().putStringSet(KEY_HIDDEN_DOWNLOADS, updated).apply()
+    }
+
+    fun unhideDownload(context: Context, title: String) {
+        val current = loadHiddenDownloads(context)
+        if (title in current) {
+            val updated = current.toMutableSet().apply { remove(title) }
+            prefs(context).edit().putStringSet(KEY_HIDDEN_DOWNLOADS, updated).apply()
+        }
     }
 }
