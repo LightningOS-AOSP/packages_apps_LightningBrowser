@@ -6,6 +6,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -191,6 +193,17 @@ fun LightningBrowserRoot(
     val navStates = remember { mutableStateMapOf<Int, TabNavState>() }
     val webViews = remember { mutableStateMapOf<Int, WebView>() }
     val loadedUrls = remember { mutableStateMapOf<Int, String>() }
+    val tabThumbnails = remember {
+        mutableStateMapOf<String, Bitmap>().apply {
+            if (!incognito) {
+                initialTabs.forEach { tab ->
+                    BrowserStore.loadTabThumbnail(context, tab.id)?.let { bmp ->
+                        put(tab.id, bmp)
+                    }
+                }
+            }
+        }
+    }
     var chromeVisible by remember { mutableStateOf(true) }
     val bookmarks = remember {
         mutableStateListOf<Bookmark>().apply { addAll(BrowserStore.loadBookmarks(context)) }
@@ -263,9 +276,36 @@ fun LightningBrowserRoot(
         if (fingerprintLock) locked = true
     }
 
+    fun captureTabThumbnail(index: Int) {
+        val tab = tabs.getOrNull(index) ?: return
+        if (tab.url.isEmpty()) return
+        val wv = webViews[index] ?: return
+        val w = wv.width
+        val h = wv.height
+        if (w <= 0 || h <= 0) return
+        runCatching {
+            val scale = (480f / w).coerceAtMost(0.5f)
+            val bmpW = (w * scale).toInt().coerceAtLeast(1)
+            val bmpH = (h * scale).toInt().coerceAtLeast(1)
+            val bmp = Bitmap.createBitmap(bmpW, bmpH, Bitmap.Config.RGB_565)
+            val canvas = Canvas(bmp)
+            canvas.scale(scale, scale)
+            wv.draw(canvas)
+            tabThumbnails[tab.id] = bmp
+            if (!incognito && !tab.private) {
+                BrowserStore.saveTabThumbnail(context, tab.id, bmp)
+            }
+        }
+    }
+
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) {
+                if (screen == LightningScreen.BROWSER) {
+                    captureTabThumbnail(activeIndex)
+                }
+            }
             if (event == Lifecycle.Event.ON_STOP && fingerprintLock) locked = true
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -407,6 +447,7 @@ fun LightningBrowserRoot(
                 if (view?.canGoBack() == true) {
                     view.goBack()
                 } else {
+                    captureTabThumbnail(activeIndex)
                     screenBackStack.clear()
                     screen = LightningScreen.HOME
                 }
@@ -472,9 +513,14 @@ fun LightningBrowserRoot(
                     )
                     LightningScreen.TABS -> TabSwitcherScreen(
                         tabs = tabs,
+                        thumbnails = tabThumbnails,
                         onCloseTab = { index ->
                             if (index in tabs.indices) {
-                                tabs.removeAt(index)
+                                val removed = tabs.removeAt(index)
+                                tabThumbnails.remove(removed.id)
+                                if (!incognito && !removed.private) {
+                                    BrowserStore.deleteTabThumbnail(context, removed.id)
+                                }
                                 webViews.remove(index)?.destroy()
                                 navStates.remove(index)
                                 loadedUrls.remove(index)
@@ -493,6 +539,10 @@ fun LightningBrowserRoot(
                         },
                         onCloseAll = {
                             tabs.clear()
+                            tabThumbnails.clear()
+                            if (!incognito) {
+                                BrowserStore.clearAllTabThumbnails(context)
+                            }
                             webViews.values.forEach { runCatching { it.destroy() } }
                             webViews.clear()
                             navStates.clear()
@@ -529,10 +579,20 @@ fun LightningBrowserRoot(
                         recentPages = recentPages,
                         bookmarks = bookmarks,
                         onUpdateTab = { index, tab -> if (index in tabs.indices) tabs[index] = tab },
-                        onRecordVisit = { title, domain -> recordVisit(title, domain) },
+                        onRecordVisit = { title, domain ->
+                            recordVisit(title, domain)
+                            webViews[activeIndex]?.postDelayed({
+                                if (screen == LightningScreen.BROWSER) {
+                                    captureTabThumbnail(activeIndex)
+                                }
+                            }, 600L)
+                        },
                         onSearchSubmitted = { recordSearch(it) },
                         onOpenDownloads = { navigateTo(LightningScreen.DOWNLOADS) },
-                        onBackHome = { screen = LightningScreen.HOME },
+                        onBackHome = {
+                            captureTabThumbnail(activeIndex)
+                            screen = LightningScreen.HOME
+                        },
                     )
                     LightningScreen.SETTINGS -> SettingsRootScreen(
                         startupBehavior = startupBehavior,
@@ -625,6 +685,9 @@ fun LightningBrowserRoot(
                         backEnabled = navStates[activeIndex]?.canGoBack == true,
                         forwardEnabled = navStates[activeIndex]?.canGoForward == true,
                         onNewTab = {
+                            if (screen == LightningScreen.BROWSER) {
+                                captureTabThumbnail(activeIndex)
+                            }
                             screen = LightningScreen.TABS
                         },
                         onBookmark = {

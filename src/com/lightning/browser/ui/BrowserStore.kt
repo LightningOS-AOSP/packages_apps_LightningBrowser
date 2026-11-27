@@ -1,6 +1,8 @@
 package com.lightning.browser.ui
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import com.lightning.browser.ui.home.PinnedSite
 import com.lightning.browser.ui.settings.Bookmark
 import com.lightning.browser.ui.settings.DnsProvider
@@ -9,6 +11,10 @@ import com.lightning.browser.ui.settings.SearchEngine
 import com.lightning.browser.ui.settings.StartupBehavior
 import com.lightning.browser.ui.tabs.BrowserTab
 import com.lightning.browser.ui.theme.ThemeMode
+import java.io.File
+import java.io.FileOutputStream
+import java.util.UUID
+import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -224,11 +230,13 @@ object BrowserStore {
                     val url = entry.optString("url", "")
                     val domain = entry.optString("domain", "")
                     val title = entry.optString("title", if (url.isEmpty()) "New tab" else domain)
+                    val id = entry.optString("id", "").ifEmpty { UUID.randomUUID().toString() }
                     add(BrowserTab(
                         title = title.ifEmpty { if (url.isEmpty()) "New tab" else domain },
                         domain = domain,
                         url = url,
                         private = false,
+                        id = id,
                     ))
                 }
             }
@@ -242,12 +250,63 @@ object BrowserStore {
             array.put(JSONObject()
                 .put("title", tab.title)
                 .put("domain", tab.domain)
-                .put("url", tab.url))
+                .put("url", tab.url)
+                .put("id", tab.id))
         }
         prefs(context)
             .edit()
             .putString(KEY_TABS, array.toString())
             .apply()
+    }
+
+    private val diskExecutor = Executors.newSingleThreadExecutor()
+
+    private fun thumbnailDir(context: Context): File =
+        File(context.filesDir, "tab_thumbnails").apply { if (!exists()) mkdirs() }
+
+    fun saveTabThumbnail(context: Context, tabId: String, bitmap: Bitmap) {
+        if (tabId.isEmpty()) return
+        diskExecutor.execute {
+            runCatching {
+                val file = File(thumbnailDir(context), "$tabId.jpg")
+                FileOutputStream(file).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                }
+            }
+        }
+    }
+
+    fun loadTabThumbnail(context: Context, tabId: String): Bitmap? {
+        if (tabId.isEmpty()) return null
+        return runCatching {
+            val file = File(thumbnailDir(context), "$tabId.jpg")
+            if (file.exists()) {
+                val options = BitmapFactory.Options().apply {
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                }
+                BitmapFactory.decodeFile(file.absolutePath, options)
+            } else {
+                null
+            }
+        }.getOrNull()
+    }
+
+    fun deleteTabThumbnail(context: Context, tabId: String) {
+        if (tabId.isEmpty()) return
+        diskExecutor.execute {
+            runCatching {
+                val file = File(thumbnailDir(context), "$tabId.jpg")
+                if (file.exists()) file.delete()
+            }
+        }
+    }
+
+    fun clearAllTabThumbnails(context: Context) {
+        diskExecutor.execute {
+            runCatching {
+                thumbnailDir(context).listFiles()?.forEach { it.delete() }
+            }
+        }
     }
 
     fun loadActiveTab(context: Context): Int =
