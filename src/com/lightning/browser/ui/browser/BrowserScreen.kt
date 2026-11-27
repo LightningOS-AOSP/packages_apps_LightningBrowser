@@ -1689,14 +1689,24 @@ private fun BrowserPage(
                 wv.onResume()
                 wv.post {
                     wv.requestLayout()
+                    wv.scrollBy(0, 1)
+                    wv.scrollBy(0, -1)
                     wv.invalidate()
                 }
-                wv.postDelayed({ wv.invalidate() }, 60L)
+                wv.postDelayed({
+                    wv.scrollBy(0, 1)
+                    wv.scrollBy(0, -1)
+                    wv.invalidate()
+                }, 80L)
             }
         },
         update = { wv ->
             wv.onResume()
-            wv.post { wv.invalidate() }
+            wv.post {
+                wv.scrollBy(0, 1)
+                wv.scrollBy(0, -1)
+                wv.invalidate()
+            }
             (wv.tag as? WebConfig)?.let { config ->
                 val desktopChanged = config.desktopMode != tab.desktopMode
                 config.tab = tab

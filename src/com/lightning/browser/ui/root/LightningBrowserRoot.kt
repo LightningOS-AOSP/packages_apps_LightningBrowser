@@ -346,6 +346,7 @@ fun LightningBrowserRoot(
     var pinnedDraft by remember { mutableStateOf("") }
     var duplicateTabWarning by remember { mutableStateOf<DuplicateTabWarning?>(null) }
     val suppressedDuplicateUrls = remember { HashSet<String>() }
+    val freshTabIds = remember { HashSet<String>() }
 
     LaunchedEffect(duplicateTabWarning) {
         val current = duplicateTabWarning ?: return@LaunchedEffect
@@ -922,9 +923,12 @@ fun LightningBrowserRoot(
                             val warning = duplicateTabWarning
                             duplicateTabWarning = null
                             if (warning != null) {
-                                warning.createdTabId?.let { cid ->
-                                    val cIdx = tabs.indexOfFirst { it.id == cid }
-                                    if (cIdx >= 0) removeTabAt(cIdx)
+                                val toRemoveId = warning.createdTabId
+                                    ?: tabs.getOrNull(activeIndex)?.id?.takeIf { it in freshTabIds }
+                                if (toRemoveId != null) {
+                                    freshTabIds.remove(toRemoveId)
+                                    val cIdx = tabs.indexOfFirst { it.id == toRemoveId }
+                                    if (cIdx >= 0 && tabs.size > 1) removeTabAt(cIdx)
                                 }
                                 val target = tabs.indexOfFirst { it.id == warning.existingTabId }
                                 if (target >= 0) {
@@ -934,6 +938,7 @@ fun LightningBrowserRoot(
                         },
                         onDismissDuplicateTab = {
                             duplicateTabWarning?.let { suppressedDuplicateUrls.add(it.normalizedUrl) }
+                            tabs.getOrNull(activeIndex)?.id?.let { freshTabIds.remove(it) }
                             duplicateTabWarning = null
                         },
                         showClipboardBanner = showClipboardBanner,
@@ -1037,7 +1042,9 @@ fun LightningBrowserRoot(
                             activeIndex = 0
                         },
                         onNewTab = {
-                            tabs.add(BrowserTab(title = "New tab", domain = "", private = incognito))
+                            val newTab = BrowserTab(title = "New tab", domain = "", private = incognito)
+                            freshTabIds.add(newTab.id)
+                            tabs.add(newTab)
                             activeIndex = tabs.size - 1
                         },
                         onOpenTab = {
