@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
@@ -119,6 +120,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.delay
 import com.lightning.browser.R
+import com.lightning.browser.ui.BrowserStore
 import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.components.MorphLoader
 import com.lightning.browser.ui.components.ShapedIcon
@@ -248,6 +250,7 @@ fun BrowserScreen(
     readingTimeEnabled: Boolean = false,
     clipboardPromptEnabled: Boolean = true,
     waybackEnabled: Boolean = true,
+    onDownloadSaved: (String) -> Unit = {},
     onBackHome: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -266,6 +269,8 @@ fun BrowserScreen(
     val lastToggle = remember { longArrayOf(0L) }
     val context = androidx.compose.ui.platform.LocalContext.current
     var pendingDownload by remember { mutableStateOf<PendingDownload?>(null) }
+    var downloadConfirmPrompt by remember { mutableStateOf<PendingDownload?>(null) }
+    var mailtoPromptUri by remember { mutableStateOf<Uri?>(null) }
     var duplicateDownload by remember { mutableStateOf<DuplicateDownloadPrompt?>(null) }
     var downloadPopup by remember { mutableStateOf<DownloadPopupState?>(null) }
     var waybackSnapshot by remember(activeIndex) { mutableStateOf<WaybackSnapshot?>(null) }
@@ -328,8 +333,15 @@ fun BrowserScreen(
         downloadPopup = DownloadPopupState(fileName = name, completed = true)
     }
 
-    fun enqueueChecked(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) {
-        val fileName = BrowserDownloads.fileNameFrom(contentDisposition, url, mimeType)
+    fun enqueueChecked(
+        url: String,
+        userAgent: String?,
+        contentDisposition: String?,
+        mimeType: String?,
+        overrideFileName: String? = null,
+    ) {
+        val fileName = overrideFileName?.takeIf { it.isNotBlank() }
+            ?: BrowserDownloads.fileNameFrom(contentDisposition, url, mimeType)
         if (BrowserDownloads.downloadExists(context, fileName)) {
             val suggested = BrowserDownloads.nextAvailableName(context, fileName)
             duplicateDownload = if (url.startsWith("data:", ignoreCase = true)) {
@@ -340,6 +352,7 @@ fun BrowserScreen(
         } else {
             val started = BrowserDownloads.enqueueWithFileName(context, url, userAgent, fileName, mimeType)
             if (started) {
+                onDownloadSaved(fileName)
                 if (url.startsWith("data:", ignoreCase = true)) {
                     showDownloadFinished(fileName)
                 } else {
@@ -359,9 +372,9 @@ fun BrowserScreen(
         }
     }
 
-    fun startDownload(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) {
+    fun proceedDownload(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?, overrideFileName: String? = null) {
         if (url.startsWith("data:", ignoreCase = true)) {
-            enqueueChecked(url, userAgent, contentDisposition, mimeType)
+            enqueueChecked(url, userAgent, contentDisposition, mimeType, overrideFileName)
             return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -370,7 +383,36 @@ fun BrowserScreen(
             pendingDownload = PendingDownload(url, userAgent, contentDisposition, mimeType)
             notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            enqueueChecked(url, userAgent, contentDisposition, mimeType)
+            enqueueChecked(url, userAgent, contentDisposition, mimeType, overrideFileName)
+        }
+    }
+
+    fun startDownload(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?) {
+        val fileName = BrowserDownloads.fileNameFrom(contentDisposition, url, mimeType)
+        val action = BrowserDownloads.resolveActionForDownload(context, url, mimeType, fileName)
+        when (action) {
+            BrowserStore.ContentAction.OPEN_WITH_APP -> {
+                val opened = runCatching {
+                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                    true
+                }.getOrDefault(false)
+                if (!opened) {
+                    proceedDownload(url, userAgent, contentDisposition, mimeType)
+                }
+            }
+            BrowserStore.ContentAction.ALWAYS_ASK -> {
+                downloadConfirmPrompt = PendingDownload(url, userAgent, contentDisposition, mimeType)
+            }
+            else -> {
+                if (BrowserStore.loadDownloadAskBefore(context)) {
+                    downloadConfirmPrompt = PendingDownload(url, userAgent, contentDisposition, mimeType)
+                } else {
+                    proceedDownload(url, userAgent, contentDisposition, mimeType)
+                }
+            }
         }
     }
 
@@ -626,6 +668,7 @@ fun BrowserScreen(
                             onBlocked = onBlocked,
                             onDnsResolved = onDnsResolved,
                             onPrintRequest = onPrintRequest,
+                            onMailtoPrompt = { uri -> mailtoPromptUri = uri },
                             onHttpError = { failedUrl, statusCode ->
                                 if (waybackEnabled && isActive && statusCode in listOf(404, 410, 502, 504)) {
                                     WaybackResolver.checkAvailability(failedUrl) { result ->
@@ -826,6 +869,102 @@ fun BrowserScreen(
                     }
                 }
                 duplicateDownload = null
+            },
+        )
+    }
+
+    downloadConfirmPrompt?.let { pending ->
+        val colors = LightningTheme.colors
+        val initialName = remember(pending) {
+            BrowserDownloads.fileNameFrom(pending.contentDisposition, pending.url, pending.mimeType)
+        }
+        var draftName by remember(pending) { mutableStateOf(initialName) }
+        val folder = remember { BrowserStore.loadDownloadFolder(context) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { downloadConfirmPrompt = null },
+            title = { Text(stringResource(R.string.dl_prompt_title), color = colors.onSurface) },
+            text = {
+                Column {
+                    Text(
+                        text = "${stringResource(R.string.dl_save_to_title)}: ${stringResource(folder.labelRes)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    TextField(
+                        value = draftName,
+                        onValueChange = { draftName = it },
+                        singleLine = true,
+                        label = { Text(stringResource(R.string.dl_prompt_filename)) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { downloadConfirmPrompt = null }) {
+                    Text(stringResource(R.string.dns_custom_cancel), color = colors.primary)
+                }
+            },
+            confirmButton = {
+                Row {
+                    if (pending.url.startsWith("http", ignoreCase = true)) {
+                        TextButton(onClick = {
+                            downloadConfirmPrompt = null
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(pending.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            }
+                        }) {
+                            Text(stringResource(R.string.dl_prompt_open), color = colors.primary)
+                        }
+                    }
+                    TextButton(onClick = {
+                        val finalName = draftName.trim().ifEmpty { initialName }
+                        downloadConfirmPrompt = null
+                        proceedDownload(
+                            pending.url,
+                            pending.userAgent,
+                            pending.contentDisposition,
+                            pending.mimeType,
+                            finalName,
+                        )
+                    }) {
+                        Text(stringResource(R.string.dl_prompt_save), color = colors.primary)
+                    }
+                }
+            },
+        )
+    }
+
+    mailtoPromptUri?.let { uri ->
+        val colors = LightningTheme.colors
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { mailtoPromptUri = null },
+            title = { Text(stringResource(R.string.dl_prompt_open_mailto_title), color = colors.onSurface) },
+            text = {
+                Text(
+                    text = stringResource(R.string.dl_prompt_open_mailto_body, uri.schemeSpecificPart.orEmpty()),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurfaceVariant,
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { mailtoPromptUri = null }) {
+                    Text(stringResource(R.string.dns_custom_cancel), color = colors.primary)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    mailtoPromptUri = null
+                    runCatching {
+                        context.startActivity(
+                            Intent(Intent.ACTION_SENDTO, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                }) {
+                    Text(stringResource(R.string.dl_prompt_open), color = colors.primary)
+                }
             },
         )
     }
@@ -1528,6 +1667,7 @@ private fun BrowserPage(
     onDnsResolved: () -> Unit,
     onHttpError: (String, Int) -> Unit,
     onPrintRequest: () -> Unit,
+    onMailtoPrompt: (Uri) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
@@ -1739,6 +1879,20 @@ private fun BrowserPage(
 
                     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                         val target = request?.url ?: return false
+                        if (target.scheme.equals("mailto", ignoreCase = true)) {
+                            val mailtoAction = BrowserStore.loadContentActions(context)["mailto"]
+                                ?: BrowserStore.ContentAction.OPEN_WITH_APP
+                            if (mailtoAction == BrowserStore.ContentAction.ALWAYS_ASK) {
+                                view?.post { config.onMailtoPrompt(target) }
+                            } else {
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_SENDTO, target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                }
+                            }
+                            return true
+                        }
                         if (config.adBlocking && request.isForMainFrame && !(request.hasGesture() && !request.isRedirect)) {
                             val host = target.host.orEmpty()
                             if (AdBlocker.isAdHost(host, context)) {
@@ -1878,6 +2032,7 @@ private fun BrowserPage(
                 config.onDnsResolved = onDnsResolved
                 config.onHttpError = onHttpError
                 config.onPrintRequest = onPrintRequest
+                config.onMailtoPrompt = onMailtoPrompt
                 if (desktopChanged) {
                     applyDesktopMode(wv, config, tab.desktopMode)
                     if (tab.url.isNotEmpty()) {

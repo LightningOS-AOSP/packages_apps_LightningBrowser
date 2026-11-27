@@ -18,8 +18,10 @@ import com.lightning.browser.ui.components.GroupedColumn
 fun BrowsingScreen(
     duplicateTabWarningEnabled: Boolean,
     recentlyClosedEnabled: Boolean,
+    waybackEnabled: Boolean,
     onDuplicateTabWarningChange: (Boolean) -> Unit,
     onRecentlyClosedChange: (Boolean) -> Unit,
+    onWaybackChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -32,7 +34,7 @@ fun BrowsingScreen(
     ) {
         SettingsHeader(stringResource(R.string.browsing_title), onBack)
         Spacer(Modifier.height(16.dp))
-        GroupedColumn(2) { i, shape ->
+        GroupedColumn(3) { i, shape ->
             when (i) {
                 0 -> SettingsSwitchRow(
                     title = stringResource(R.string.browsing_duplicate_warning),
@@ -41,11 +43,18 @@ fun BrowsingScreen(
                     onCheckedChange = onDuplicateTabWarningChange,
                     shape = shape,
                 )
-                else -> SettingsSwitchRow(
+                1 -> SettingsSwitchRow(
                     title = stringResource(R.string.browsing_recently_closed),
                     summary = stringResource(R.string.browsing_recently_closed_summary),
                     checked = recentlyClosedEnabled,
                     onCheckedChange = onRecentlyClosedChange,
+                    shape = shape,
+                )
+                else -> SettingsSwitchRow(
+                    title = stringResource(R.string.privacy_wayback_fallback),
+                    summary = stringResource(R.string.privacy_wayback_fallback_summary),
+                    checked = waybackEnabled,
+                    onCheckedChange = onWaybackChange,
                     shape = shape,
                 )
             }

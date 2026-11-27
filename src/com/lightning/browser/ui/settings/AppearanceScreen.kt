@@ -43,10 +43,6 @@ import com.lightning.browser.ui.theme.rememberLightningHaptics
 fun AppearanceScreen(
     themeMode: ThemeMode,
     onThemeModeSelect: (ThemeMode) -> Unit,
-    hapticsEnabled: Boolean,
-    onHapticsChange: (Boolean) -> Unit,
-    quickArcEnabled: Boolean,
-    onQuickArcChange: (Boolean) -> Unit,
     tabPreviewsEnabled: Boolean,
     onTabPreviewsChange: (Boolean) -> Unit,
     readingTimeEnabled: Boolean,
@@ -67,23 +63,9 @@ fun AppearanceScreen(
         Spacer(Modifier.height(28.dp))
         ThemePreview(themeMode)
         Spacer(Modifier.height(20.dp))
-        GroupedColumn(4) { i, shape ->
+        GroupedColumn(2) { i, shape ->
             when (i) {
                 0 -> SettingsSwitchRow(
-                    title = stringResource(R.string.appearance_haptics),
-                    summary = stringResource(R.string.appearance_haptics_summary),
-                    checked = hapticsEnabled,
-                    onCheckedChange = onHapticsChange,
-                    shape = shape,
-                )
-                1 -> SettingsSwitchRow(
-                    title = stringResource(R.string.appearance_quick_arc),
-                    summary = stringResource(R.string.appearance_quick_arc_summary),
-                    checked = quickArcEnabled,
-                    onCheckedChange = onQuickArcChange,
-                    shape = shape,
-                )
-                2 -> SettingsSwitchRow(
                     title = stringResource(R.string.appearance_tab_previews),
                     summary = stringResource(R.string.appearance_tab_previews_summary),
                     checked = tabPreviewsEnabled,

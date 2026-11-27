@@ -25,11 +25,9 @@ fun PrivacyScreen(
     blockedCount: Int,
     fingerprintLock: Boolean,
     clipboardPromptEnabled: Boolean,
-    waybackEnabled: Boolean,
     onAdBlockingChange: (Boolean) -> Unit,
     onFingerprintChange: (Boolean) -> Unit,
     onClipboardPromptChange: (Boolean) -> Unit,
-    onWaybackChange: (Boolean) -> Unit,
     onOpenDns: () -> Unit,
     onOpenSitePermissions: () -> Unit,
     onClearData: () -> Unit,
@@ -45,7 +43,7 @@ fun PrivacyScreen(
     ) {
         SettingsHeader(stringResource(R.string.privacy_title), onBack)
         Spacer(Modifier.height(16.dp))
-        GroupedColumn(3) { i, shape ->
+        GroupedColumn(4) { i, shape ->
             when (i) {
                 0 -> SettingsSwitchRow(
                     title = stringResource(R.string.privacy_ad_blocking),
@@ -62,30 +60,18 @@ fun PrivacyScreen(
                     shape = shape,
                     index = i,
                 )
-                else -> SettingsSwitchRow(
+                2 -> SettingsSwitchRow(
                     title = stringResource(R.string.privacy_fingerprint),
                     summary = stringResource(R.string.privacy_fingerprint_summary),
                     checked = fingerprintLock,
                     onCheckedChange = onFingerprintChange,
                     shape = shape,
                 )
-            }
-        }
-        Spacer(Modifier.height(16.dp))
-        GroupedColumn(2) { i, shape ->
-            when (i) {
-                0 -> SettingsSwitchRow(
+                else -> SettingsSwitchRow(
                     title = stringResource(R.string.privacy_clipboard_prompt),
                     summary = stringResource(R.string.privacy_clipboard_prompt_summary),
                     checked = clipboardPromptEnabled,
                     onCheckedChange = onClipboardPromptChange,
-                    shape = shape,
-                )
-                else -> SettingsSwitchRow(
-                    title = stringResource(R.string.privacy_wayback_fallback),
-                    summary = stringResource(R.string.privacy_wayback_fallback_summary),
-                    checked = waybackEnabled,
-                    onCheckedChange = onWaybackChange,
                     shape = shape,
                 )
             }

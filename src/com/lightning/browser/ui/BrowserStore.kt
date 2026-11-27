@@ -50,6 +50,11 @@ object BrowserStore {
     private const val KEY_WAYBACK_FALLBACK = "wayback_fallback"
     private const val KEY_DUPLICATE_TAB_WARNING = "duplicate_tab_warning"
     private const val KEY_RECENTLY_CLOSED_ENABLED = "recently_closed_enabled"
+    private const val KEY_DL_SAVE_FOLDER = "dl_save_folder"
+    private const val KEY_DL_ASK_BEFORE = "dl_ask_before"
+    private const val KEY_DL_DELETE_PRIVATE = "dl_delete_private"
+    private const val KEY_DL_OTHER_ASK = "dl_other_ask"
+    private const val KEY_DL_CONTENT_ACTIONS = "dl_content_actions"
     private const val KEY_DISMISSED_CLIP_TIMESTAMP = "dismissed_clip_timestamp"
     private const val KEY_CLOSED_TABS = "recently_closed_tabs"
     const val MAX_CLOSED_TABS = 10
@@ -287,6 +292,167 @@ object BrowserStore {
 
     fun saveRecentlyClosedEnabled(context: Context, value: Boolean) {
         prefs(context).edit().putBoolean(KEY_RECENTLY_CLOSED_ENABLED, value).apply()
+    }
+
+    enum class DownloadFolder(val labelRes: Int, val relativePath: String) {
+        DOWNLOADS(com.lightning.browser.R.string.dl_folder_downloads, "Download"),
+        DOWNLOADS_LIGHTNING(com.lightning.browser.R.string.dl_folder_downloads_lightning, "Download/Lightning"),
+        DOCUMENTS(com.lightning.browser.R.string.dl_folder_documents, "Documents"),
+    }
+
+    enum class ContentAction(val labelRes: Int) {
+        ALWAYS_ASK(com.lightning.browser.R.string.dl_action_always_ask),
+        SAVE_FILE(com.lightning.browser.R.string.dl_action_save_file),
+        OPEN_IN_BROWSER(com.lightning.browser.R.string.dl_action_open_in_browser),
+        OPEN_WITH_APP(com.lightning.browser.R.string.dl_action_open_with_app),
+    }
+
+    data class ContentPreference(
+        val action: ContentAction,
+        val packageName: String? = null,
+        val className: String? = null,
+        val appLabel: String? = null,
+    )
+
+    data class ContentTypeRule(
+        val key: String,
+        val title: String,
+        val mimeOrScheme: String,
+        val defaultAction: ContentAction,
+        val supportedActions: List<ContentAction>,
+    )
+
+    val defaultContentTypeRules = listOf(
+        ContentTypeRule(
+            key = "avif",
+            title = "AV1 Image File (AVIF)",
+            mimeOrScheme = "image/avif",
+            defaultAction = ContentAction.OPEN_IN_BROWSER,
+            supportedActions = listOf(ContentAction.OPEN_IN_BROWSER, ContentAction.SAVE_FILE, ContentAction.ALWAYS_ASK),
+        ),
+        ContentTypeRule(
+            key = "xml",
+            title = "Extensible Markup Language (XML)",
+            mimeOrScheme = "text/xml",
+            defaultAction = ContentAction.SAVE_FILE,
+            supportedActions = listOf(ContentAction.SAVE_FILE, ContentAction.OPEN_IN_BROWSER, ContentAction.ALWAYS_ASK),
+        ),
+        ContentTypeRule(
+            key = "jxl",
+            title = "JPEG XL Image File",
+            mimeOrScheme = "image/jxl",
+            defaultAction = ContentAction.SAVE_FILE,
+            supportedActions = listOf(ContentAction.SAVE_FILE, ContentAction.ALWAYS_ASK),
+        ),
+        ContentTypeRule(
+            key = "mailto",
+            title = "mailto",
+            mimeOrScheme = "mailto",
+            defaultAction = ContentAction.OPEN_WITH_APP,
+            supportedActions = listOf(ContentAction.ALWAYS_ASK),
+        ),
+        ContentTypeRule(
+            key = "pdf",
+            title = "Portable Document Format (PDF)",
+            mimeOrScheme = "application/pdf",
+            defaultAction = ContentAction.OPEN_IN_BROWSER,
+            supportedActions = listOf(ContentAction.OPEN_IN_BROWSER, ContentAction.SAVE_FILE, ContentAction.ALWAYS_ASK),
+        ),
+        ContentTypeRule(
+            key = "svg",
+            title = "Scalable Vector Graphics (SVG)",
+            mimeOrScheme = "image/svg+xml",
+            defaultAction = ContentAction.SAVE_FILE,
+            supportedActions = listOf(ContentAction.SAVE_FILE, ContentAction.OPEN_IN_BROWSER, ContentAction.ALWAYS_ASK),
+        ),
+        ContentTypeRule(
+            key = "webp",
+            title = "WebP Image",
+            mimeOrScheme = "image/webp",
+            defaultAction = ContentAction.OPEN_IN_BROWSER,
+            supportedActions = listOf(ContentAction.OPEN_IN_BROWSER, ContentAction.SAVE_FILE, ContentAction.ALWAYS_ASK),
+        ),
+    )
+
+    fun loadDownloadFolder(context: Context): DownloadFolder =
+        DownloadFolder.entries.firstOrNull { it.name == prefs(context).getString(KEY_DL_SAVE_FOLDER, null) }
+            ?: DownloadFolder.DOWNLOADS
+
+    fun saveDownloadFolder(context: Context, folder: DownloadFolder) {
+        prefs(context).edit().putString(KEY_DL_SAVE_FOLDER, folder.name).apply()
+    }
+
+    fun loadDownloadAskBefore(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DL_ASK_BEFORE, false)
+
+    fun saveDownloadAskBefore(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DL_ASK_BEFORE, value).apply()
+    }
+
+    fun loadDeletePrivateDownloads(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DL_DELETE_PRIVATE, false)
+
+    fun saveDeletePrivateDownloads(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DL_DELETE_PRIVATE, value).apply()
+    }
+
+    fun loadDownloadOtherAsk(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DL_OTHER_ASK, false)
+
+    fun saveDownloadOtherAsk(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DL_OTHER_ASK, value).apply()
+    }
+
+    fun loadContentPreferences(context: Context): Map<String, ContentPreference> {
+        val raw = prefs(context).getString(KEY_DL_CONTENT_ACTIONS, null)
+        val overrides = mutableMapOf<String, ContentPreference>()
+        if (raw != null) {
+            runCatching {
+                val obj = JSONObject(raw)
+                obj.keys().forEach { key ->
+                    val entry = obj.opt(key)
+                    when (entry) {
+                        is JSONObject -> {
+                            val name = entry.optString("action")
+                            val action = ContentAction.entries.firstOrNull { it.name == name }
+                            if (action != null) {
+                                overrides[key] = ContentPreference(
+                                    action = action,
+                                    packageName = entry.optString("package").ifBlank { null },
+                                    className = entry.optString("class").ifBlank { null },
+                                    appLabel = entry.optString("label").ifBlank { null },
+                                )
+                            }
+                        }
+                        is String -> {
+                            ContentAction.entries.firstOrNull { it.name == entry }?.let { action ->
+                                overrides[key] = ContentPreference(action = action)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return defaultContentTypeRules.associate { rule ->
+            rule.key to (overrides[rule.key] ?: ContentPreference(rule.defaultAction))
+        }
+    }
+
+    fun saveContentPreference(context: Context, key: String, pref: ContentPreference) {
+        val current = loadContentPreferences(context).toMutableMap()
+        current[key] = pref
+        val obj = JSONObject()
+        current.forEach { (k, v) ->
+            obj.put(
+                k,
+                JSONObject()
+                    .put("action", v.action.name)
+                    .put("package", v.packageName.orEmpty())
+                    .put("class", v.className.orEmpty())
+                    .put("label", v.appLabel.orEmpty()),
+            )
+        }
+        prefs(context).edit().putString(KEY_DL_CONTENT_ACTIONS, obj.toString()).apply()
     }
 
     fun loadTabs(context: Context): List<BrowserTab> {

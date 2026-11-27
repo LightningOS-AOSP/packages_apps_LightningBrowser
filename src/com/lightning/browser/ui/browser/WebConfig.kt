@@ -16,6 +16,7 @@
 
 package com.lightning.browser.ui.browser
 
+import android.net.Uri
 import com.lightning.browser.ui.tabs.BrowserTab
 import java.io.File
 
@@ -46,4 +47,5 @@ class WebConfig(
     var onDnsResolved: () -> Unit = {}
     var onHttpError: (url: String, statusCode: Int) -> Unit = { _, _ -> }
     var onPrintRequest: () -> Unit = {}
+    var onMailtoPrompt: (Uri) -> Unit = {}
 }

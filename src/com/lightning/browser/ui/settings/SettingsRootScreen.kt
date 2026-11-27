@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Tab
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -29,6 +30,7 @@ fun SettingsRootScreen(
     themeMode: ThemeMode,
     searchEngine: SearchEngine,
     onOpenStartup: () -> Unit,
+    onOpenControls: () -> Unit,
     onOpenBrowsing: () -> Unit,
     onOpenAppearance: () -> Unit,
     onOpenPrivacy: () -> Unit,
@@ -47,7 +49,7 @@ fun SettingsRootScreen(
     ) {
         SettingsHeader(stringResource(R.string.settings_title), onBack)
         Spacer(Modifier.height(4.dp))
-        GroupedColumn(7) { i, shape ->
+        GroupedColumn(8) { i, shape ->
             when (i) {
                 0 -> SettingsRow(
                     icon = Icons.Filled.Home,
@@ -74,6 +76,14 @@ fun SettingsRootScreen(
                     index = i,
                 )
                 3 -> SettingsRow(
+                    icon = Icons.Filled.TouchApp,
+                    title = stringResource(R.string.settings_controls),
+                    summary = stringResource(R.string.settings_controls_summary),
+                    onClick = onOpenControls,
+                    shape = shape,
+                    index = i,
+                )
+                4 -> SettingsRow(
                     icon = Icons.Filled.Tab,
                     title = stringResource(R.string.settings_browsing),
                     summary = stringResource(R.string.settings_browsing_summary),
@@ -81,7 +91,7 @@ fun SettingsRootScreen(
                     shape = shape,
                     index = i,
                 )
-                4 -> SettingsRow(
+                5 -> SettingsRow(
                     icon = Icons.Filled.Language,
                     title = stringResource(R.string.settings_search_engine),
                     summary = stringResource(searchEngine.labelRes),
@@ -89,7 +99,7 @@ fun SettingsRootScreen(
                     shape = shape,
                     index = i,
                 )
-                5 -> SettingsRow(
+                6 -> SettingsRow(
                     icon = Icons.Filled.Download,
                     title = stringResource(R.string.settings_downloads),
                     summary = stringResource(R.string.settings_downloads_summary),

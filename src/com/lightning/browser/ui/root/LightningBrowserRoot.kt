@@ -110,8 +110,10 @@ import com.lightning.browser.ui.settings.AppearanceScreen
 import com.lightning.browser.ui.settings.Bookmark
 import com.lightning.browser.ui.settings.BookmarksScreen
 import com.lightning.browser.ui.settings.BrowsingScreen
+import com.lightning.browser.ui.settings.ControlsScreen
 import com.lightning.browser.ui.settings.DnsProvider
 import com.lightning.browser.ui.settings.DnsScreen
+import com.lightning.browser.ui.settings.DownloadSettingsScreen
 import com.lightning.browser.ui.settings.DownloadsScreen
 import com.lightning.browser.ui.settings.HistoryEntry
 import com.lightning.browser.ui.settings.HistoryScreen
@@ -145,7 +147,7 @@ data class DuplicateTabWarning(
 )
 
 enum class LightningScreen {
-    HOME, TABS, SAVED_PAGES, RECENTLY_CLOSED, PRINT, SETTINGS, APPEARANCE, BROWSING, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, ABOUT, BOOKMARKS, HISTORY,
+    HOME, TABS, SAVED_PAGES, RECENTLY_CLOSED, PRINT, SETTINGS, APPEARANCE, CONTROLS, BROWSING, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, DOWNLOAD_SETTINGS, ABOUT, BOOKMARKS, HISTORY,
     SITE_PERMISSIONS, BROWSER, STARTUP
 }
 
@@ -318,6 +320,16 @@ fun LightningBrowserRoot(
     var waybackEnabled by remember { mutableStateOf(BrowserStore.loadWaybackEnabled(context)) }
     var duplicateTabWarningEnabled by remember { mutableStateOf(BrowserStore.loadDuplicateTabWarningEnabled(context)) }
     var recentlyClosedEnabled by remember { mutableStateOf(BrowserStore.loadRecentlyClosedEnabled(context)) }
+    var downloadFolder by remember { mutableStateOf(BrowserStore.loadDownloadFolder(context)) }
+    var askBeforeDownload by remember { mutableStateOf(BrowserStore.loadDownloadAskBefore(context)) }
+    var deletePrivateDownloads by remember { mutableStateOf(BrowserStore.loadDeletePrivateDownloads(context)) }
+    var otherFilesAsk by remember { mutableStateOf(BrowserStore.loadDownloadOtherAsk(context)) }
+    val contentActions = remember {
+        mutableStateMapOf<String, BrowserStore.ContentAction>().apply {
+            putAll(BrowserStore.loadContentActions(context))
+        }
+    }
+    val privateDownloadedFiles = remember { mutableStateListOf<String>() }
     var blockedCount by remember { mutableIntStateOf(0) }
     var dnsResolvedCount by remember { mutableIntStateOf(0) }
 
@@ -467,6 +479,28 @@ fun LightningBrowserRoot(
     }
     LaunchedEffect(recentlyClosedEnabled) {
         if (!incognito) BrowserStore.saveRecentlyClosedEnabled(context, recentlyClosedEnabled)
+    }
+    LaunchedEffect(downloadFolder) {
+        if (!incognito) BrowserStore.saveDownloadFolder(context, downloadFolder)
+    }
+    LaunchedEffect(askBeforeDownload) {
+        if (!incognito) BrowserStore.saveDownloadAskBefore(context, askBeforeDownload)
+    }
+    LaunchedEffect(deletePrivateDownloads) {
+        if (!incognito) BrowserStore.saveDeletePrivateDownloads(context, deletePrivateDownloads)
+    }
+    LaunchedEffect(otherFilesAsk) {
+        if (!incognito) BrowserStore.saveDownloadOtherAsk(context, otherFilesAsk)
+    }
+    DisposableEffect(incognito) {
+        onDispose {
+            if (incognito && deletePrivateDownloads && privateDownloadedFiles.isNotEmpty()) {
+                privateDownloadedFiles.forEach { fileName ->
+                    BrowserDownloads.deleteByFileName(context, fileName)
+                }
+                privateDownloadedFiles.clear()
+            }
+        }
     }
 
     fun captureTabThumbnail(index: Int) {
@@ -1097,6 +1131,11 @@ fun LightningBrowserRoot(
                         readingTimeEnabled = readingTimeEnabled,
                         clipboardPromptEnabled = clipboardPromptEnabled,
                         waybackEnabled = waybackEnabled,
+                        onDownloadSaved = { name ->
+                            if (incognito && name.isNotBlank()) {
+                                privateDownloadedFiles.add(name)
+                            }
+                        },
                         onBackHome = {
                             captureTabThumbnail(activeIndex)
                             screen = LightningScreen.HOME
@@ -1235,19 +1274,29 @@ fun LightningBrowserRoot(
                         themeMode = themeMode,
                         searchEngine = searchEngine,
                         onOpenStartup = { navigateTo(LightningScreen.STARTUP) },
+                        onOpenControls = { navigateTo(LightningScreen.CONTROLS) },
                         onOpenBrowsing = { navigateTo(LightningScreen.BROWSING) },
                         onOpenAppearance = { navigateTo(LightningScreen.APPEARANCE) },
                         onOpenPrivacy = { navigateTo(LightningScreen.PRIVACY) },
                         onOpenSearchEngine = { navigateTo(LightningScreen.SEARCH_ENGINE) },
-                        onOpenDownloads = { navigateTo(LightningScreen.DOWNLOADS) },
+                        onOpenDownloads = { navigateTo(LightningScreen.DOWNLOAD_SETTINGS) },
                         onOpenAbout = { navigateTo(LightningScreen.ABOUT) },
                         onBack = { navigateBack(LightningScreen.HOME) },
+                    )
+                    LightningScreen.CONTROLS -> ControlsScreen(
+                        hapticsEnabled = hapticsEnabled,
+                        quickArcEnabled = quickArcEnabled,
+                        onHapticsChange = { hapticsEnabled = it },
+                        onQuickArcChange = { quickArcEnabled = it },
+                        onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.BROWSING -> BrowsingScreen(
                         duplicateTabWarningEnabled = duplicateTabWarningEnabled,
                         recentlyClosedEnabled = recentlyClosedEnabled,
+                        waybackEnabled = waybackEnabled,
                         onDuplicateTabWarningChange = { duplicateTabWarningEnabled = it },
                         onRecentlyClosedChange = { recentlyClosedEnabled = it },
+                        onWaybackChange = { waybackEnabled = it },
                         onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.STARTUP -> StartupScreen(
@@ -1261,6 +1310,22 @@ fun LightningBrowserRoot(
                         onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.DOWNLOADS -> DownloadsScreen(
+                        onBack = { navigateBack(LightningScreen.HOME) },
+                    )
+                    LightningScreen.DOWNLOAD_SETTINGS -> DownloadSettingsScreen(
+                        saveFolder = downloadFolder,
+                        askBeforeDownload = askBeforeDownload,
+                        deletePrivateOnClose = deletePrivateDownloads,
+                        otherFilesAsk = otherFilesAsk,
+                        contentActions = contentActions,
+                        onSaveFolderChange = { downloadFolder = it },
+                        onAskBeforeDownloadChange = { askBeforeDownload = it },
+                        onDeletePrivateOnCloseChange = { deletePrivateDownloads = it },
+                        onOtherFilesAskChange = { otherFilesAsk = it },
+                        onContentActionChange = { key, action ->
+                            contentActions[key] = action
+                            if (!incognito) BrowserStore.saveContentAction(context, key, action)
+                        },
                         onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.ABOUT -> AboutScreen(
@@ -1283,10 +1348,6 @@ fun LightningBrowserRoot(
                     LightningScreen.APPEARANCE -> AppearanceScreen(
                         themeMode = themeMode,
                         onThemeModeSelect = { themeMode = it },
-                        hapticsEnabled = hapticsEnabled,
-                        onHapticsChange = { hapticsEnabled = it },
-                        quickArcEnabled = quickArcEnabled,
-                        onQuickArcChange = { quickArcEnabled = it },
                         tabPreviewsEnabled = tabPreviewsEnabled,
                         onTabPreviewsChange = { tabPreviewsEnabled = it },
                         readingTimeEnabled = readingTimeEnabled,
@@ -1309,11 +1370,9 @@ fun LightningBrowserRoot(
                         blockedCount = blockedCount,
                         fingerprintLock = fingerprintLock,
                         clipboardPromptEnabled = clipboardPromptEnabled,
-                        waybackEnabled = waybackEnabled,
                         onAdBlockingChange = { adBlocking = it },
                         onFingerprintChange = { fingerprintLock = it },
                         onClipboardPromptChange = { clipboardPromptEnabled = it },
-                        onWaybackChange = { waybackEnabled = it },
                         onOpenDns = { navigateTo(LightningScreen.DNS) },
                         onOpenSitePermissions = { navigateTo(LightningScreen.SITE_PERMISSIONS) },
                         onClearData = { showClearData = true },
