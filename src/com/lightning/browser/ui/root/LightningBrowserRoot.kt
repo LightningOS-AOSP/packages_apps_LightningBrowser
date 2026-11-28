@@ -17,7 +17,6 @@ import android.webkit.CookieManager
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewDatabase
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -44,6 +43,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Folder
@@ -55,6 +55,10 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -390,6 +394,17 @@ fun LightningBrowserRoot(
     val freshTabIds = remember { HashSet<String>() }
     val closingTabIds = remember { mutableStateListOf<String>() }
     val coroutineScope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+    fun showBanner(message: String) {
+        coroutineScope.launch {
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(
+                message = message,
+                duration = SnackbarDuration.Short,
+            )
+        }
+    }
+    fun showBanner(resId: Int) = showBanner(context.getString(resId))
 
     LaunchedEffect(duplicateTabWarning) {
         val current = duplicateTabWarning ?: return@LaunchedEffect
@@ -582,7 +597,7 @@ fun LightningBrowserRoot(
         val existing = bookmarks.find { it.domain == tab.domain }
         if (existing != null) {
             bookmarks.remove(existing)
-            Toast.makeText(context, R.string.bookmark_removed, Toast.LENGTH_SHORT).show()
+            showBanner(R.string.bookmark_removed)
         } else {
             pendingBookmarkTab = tab
         }
@@ -601,7 +616,7 @@ fun LightningBrowserRoot(
         runCatching { WebStorage.getInstance().deleteAllData() }
         history.clear()
         recentSearches.clear()
-        Toast.makeText(context, R.string.privacy_cleared, Toast.LENGTH_SHORT).show()
+        showBanner(R.string.privacy_cleared)
     }
 
     fun copyUrl() {
@@ -609,7 +624,7 @@ fun LightningBrowserRoot(
         if (url.isBlank()) return
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("url", url))
-        Toast.makeText(context, R.string.menu_copy_url_copied, Toast.LENGTH_SHORT).show()
+        showBanner(R.string.menu_copy_url_copied)
     }
 
     fun savePageAsPdf(
@@ -663,7 +678,7 @@ fun LightningBrowserRoot(
 
         val bytes = baos.toByteArray()
         if (bytes.isEmpty()) {
-            Toast.makeText(context, R.string.menu_save_offline_failed, Toast.LENGTH_SHORT).show()
+            showBanner(R.string.menu_save_offline_failed)
             return
         }
         BrowserDownloads.savePdfBytes(context, tab.title, tab.domain, bytes) { savedName ->
@@ -672,7 +687,7 @@ fun LightningBrowserRoot(
             } else {
                 context.getString(R.string.menu_save_offline_failed)
             }
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            showBanner(message)
         }
     }
 
@@ -722,11 +737,11 @@ fun LightningBrowserRoot(
                     } else {
                         context.getString(R.string.menu_save_offline_failed)
                     }
-                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    showBanner(message)
                 }
             } else {
                 runCatching { tempFile.delete() }
-                Toast.makeText(context, R.string.menu_save_offline_failed, Toast.LENGTH_SHORT).show()
+                showBanner(R.string.menu_save_offline_failed)
             }
         }
     }
@@ -1183,6 +1198,7 @@ fun LightningBrowserRoot(
                                 )
                             }
                         },
+                        onShowMessage = ::showBanner,
                         onOpenPdf = { url, userAgent, title ->
                             pdfFile?.let { runCatching { it.delete() } }
                             pdfTitle = title
@@ -1243,7 +1259,7 @@ fun LightningBrowserRoot(
                         incognito = incognito,
                         onRemovePinned = { site ->
                             pinnedSites.remove(site)
-                            Toast.makeText(context, R.string.home_pinned_removed, Toast.LENGTH_SHORT).show()
+                            showBanner(R.string.home_pinned_removed)
                         },
                     )
                     LightningScreen.TABS -> TabSwitcherScreen(
@@ -1362,7 +1378,7 @@ fun LightningBrowserRoot(
                                 } else {
                                     context.getString(R.string.menu_save_offline_failed)
                                 }
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                showBanner(msg)
                             }
                         },
                         onOpenExternal = {
@@ -1470,6 +1486,7 @@ fun LightningBrowserRoot(
                             contentPreferences[key] = pref
                             if (!incognito) BrowserStore.saveContentPreference(context, key, pref)
                         },
+                        onShowMessage = ::showBanner,
                         onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.ABOUT -> AboutScreen(
@@ -1582,6 +1599,21 @@ fun LightningBrowserRoot(
                     )
                 }
             }
+            SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = if (showBar) 80.dp else 16.dp),
+            ) { data ->
+                Snackbar(
+                    snackbarData = data,
+                    shape = RoundedCornerShape(24.dp),
+                    containerColor = LightningTheme.colors.surfaceContainerHigh,
+                    contentColor = LightningTheme.colors.onSurface,
+                    actionColor = LightningTheme.colors.primary,
+                )
+            }
             QuickArcMenu(
                 visible = showQuickArc,
                 onDismiss = { showQuickArc = false },
@@ -1644,7 +1676,7 @@ fun LightningBrowserRoot(
                     onPick = { folder ->
                         bookmarks.add(0, Bookmark(tab.title, tab.domain, siteIcon(tab.domain), siteTone(tab.domain), folder))
                         pendingBookmarkTab = null
-                        Toast.makeText(context, R.string.bookmark_added, Toast.LENGTH_SHORT).show()
+                        showBanner(R.string.bookmark_added)
                     },
                     onDismiss = { pendingBookmarkTab = null },
                 )
@@ -1731,7 +1763,7 @@ fun LightningBrowserRoot(
                                     if (pinnedSites.none { it.domain == domain }) {
                                         pinnedSites.add(PinnedSite(domain, siteIcon(domain), siteTone(domain), domain))
                                     }
-                                    Toast.makeText(context, R.string.home_pinned_added, Toast.LENGTH_SHORT).show()
+                                    showBanner(R.string.home_pinned_added)
                                 }
                                 showAddPinned = false
                             },

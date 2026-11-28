@@ -17,7 +17,6 @@ import android.provider.Settings
 import android.util.Base64
 import android.webkit.CookieManager
 import android.webkit.MimeTypeMap
-import android.widget.Toast
 import com.lightning.browser.R
 import com.lightning.browser.ui.BrowserStore
 import com.lightning.browser.ui.settings.DownloadItem
@@ -30,6 +29,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.flow.MutableSharedFlow
 
 // Downloads land in the device's internal Download folder via the system
 // DownloadManager. "All files access" is what Android calls the file manager
@@ -42,6 +42,8 @@ object BrowserDownloads {
     private const val COLUMN_CONTROL = "control"
     private const val CONTROL_RUN = 0
     private const val CONTROL_PAUSED = 1
+
+    val completedEvents = MutableSharedFlow<String>(extraBufferCapacity = 8)
 
     private fun downloadUri(downloadId: Long): Uri =
         Uri.parse("content://downloads/my_downloads/$downloadId")
@@ -512,9 +514,7 @@ object BrowserDownloads {
 
     private fun notifyDownloadComplete(context: Context, fileName: String) {
         BrowserStore.unhideDownload(context, fileName)
-        Handler(Looper.getMainLooper()).post {
-            Toast.makeText(context, "Downloaded $fileName", Toast.LENGTH_SHORT).show()
-        }
+        completedEvents.tryEmit(fileName)
     }
 
     fun saveOfflineArchive(

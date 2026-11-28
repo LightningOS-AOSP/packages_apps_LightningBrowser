@@ -22,7 +22,6 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Toast
 import androidx.annotation.Keep
 import org.json.JSONObject
 import androidx.activity.compose.BackHandler
@@ -59,6 +58,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FlashOn
@@ -256,6 +256,7 @@ fun BrowserScreen(
     clipboardPromptEnabled: Boolean = true,
     waybackEnabled: Boolean = true,
     onDownloadSaved: (fileName: String, relativePath: String) -> Unit = { _, _ -> },
+    onShowMessage: (String) -> Unit = {},
     onOpenPdf: (url: String, userAgent: String?, title: String) -> Unit = { _, _, _ -> },
     onBackHome: () -> Unit,
     modifier: Modifier = Modifier,
@@ -337,6 +338,12 @@ fun BrowserScreen(
 
     fun showDownloadFinished(name: String) {
         downloadPopup = DownloadPopupState(fileName = name, completed = true)
+    }
+
+    LaunchedEffect(Unit) {
+        BrowserDownloads.completedEvents.collect { completedName ->
+            showDownloadFinished(completedName)
+        }
     }
 
     fun enqueueChecked(
@@ -934,7 +941,7 @@ fun BrowserScreen(
                 if (rel != null) {
                     selectedRelativePath = rel
                 } else {
-                    Toast.makeText(context, R.string.dl_folder_invalid, Toast.LENGTH_LONG).show()
+                    onShowMessage(context.getString(R.string.dl_folder_invalid))
                 }
             }
         }
@@ -1335,6 +1342,19 @@ private fun DownloadStatusPopup(
     onDismiss: () -> Unit,
 ) {
     val colors = LightningTheme.colors
+    val iconScale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (state.completed) 1.08f else 1f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow,
+        ),
+        label = "downloadIconScale",
+    )
+    val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (state.completed) 1f else 0.35f,
+        animationSpec = tween(420, easing = FastOutSlowInEasing),
+        label = "downloadCompleteProgress",
+    )
     Surface(
         shape = RoundedCornerShape(28.dp),
         color = colors.surfaceContainerHigh,
@@ -1346,24 +1366,32 @@ private fun DownloadStatusPopup(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
         ) {
-            ShapedIcon(
-                icon = Icons.Filled.FileDownload,
-                shape = ExpressiveShapes.Cookie9,
-                container = if (state.completed) colors.secondaryContainer else colors.primaryContainer,
-                content = if (state.completed) colors.onSecondaryContainer else colors.onPrimaryContainer,
-                size = 44.dp,
-                iconSize = 22.dp,
-            )
+            Box(modifier = Modifier.graphicsLayer { scaleX = iconScale; scaleY = iconScale }) {
+                ShapedIcon(
+                    icon = if (state.completed) Icons.Filled.CheckCircle else Icons.Filled.FileDownload,
+                    shape = ExpressiveShapes.Cookie9,
+                    container = if (state.completed) colors.secondaryContainer else colors.primaryContainer,
+                    content = if (state.completed) colors.onSecondaryContainer else colors.onPrimaryContainer,
+                    size = 44.dp,
+                    iconSize = 22.dp,
+                )
+            }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(
-                        if (state.completed) R.string.download_finished_title else R.string.download_started_title,
-                    ),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = colors.onSurface,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                androidx.compose.animation.Crossfade(
+                    targetState = state.completed,
+                    animationSpec = tween(220),
+                    label = "downloadTitleCrossfade",
+                ) { done ->
+                    Text(
+                        text = stringResource(
+                            if (done) R.string.download_finished_title else R.string.download_started_title,
+                        ),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = colors.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
                 Text(
                     text = state.fileName,
                     style = MaterialTheme.typography.bodySmall,
@@ -1372,28 +1400,34 @@ private fun DownloadStatusPopup(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.height(8.dp))
-                if (state.completed) {
-                    LinearProgressIndicator(
-                        progress = { 1f },
-                        color = colors.primary,
-                        trackColor = colors.surfaceContainerHighest,
-                        strokeCap = StrokeCap.Round,
-                        gapSize = 0.dp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(CircleShape),
-                    )
-                } else {
-                    LinearProgressIndicator(
-                        color = colors.primary,
-                        trackColor = colors.surfaceContainerHighest,
-                        strokeCap = StrokeCap.Round,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(CircleShape),
-                    )
+                androidx.compose.animation.Crossfade(
+                    targetState = state.completed,
+                    animationSpec = tween(220),
+                    label = "downloadProgressCrossfade",
+                ) { done ->
+                    if (done) {
+                        LinearProgressIndicator(
+                            progress = { animatedProgress },
+                            color = colors.primary,
+                            trackColor = colors.surfaceContainerHighest,
+                            strokeCap = StrokeCap.Round,
+                            gapSize = 0.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(CircleShape),
+                        )
+                    } else {
+                        LinearProgressIndicator(
+                            color = colors.primary,
+                            trackColor = colors.surfaceContainerHighest,
+                            strokeCap = StrokeCap.Round,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .clip(CircleShape),
+                        )
+                    }
                 }
             }
             Spacer(Modifier.width(8.dp))

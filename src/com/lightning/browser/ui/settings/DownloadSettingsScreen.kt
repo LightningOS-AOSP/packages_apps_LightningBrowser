@@ -1,6 +1,5 @@
 package com.lightning.browser.ui.settings
 
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -86,6 +85,7 @@ fun DownloadSettingsScreen(
     onDeletePrivateOnCloseChange: (Boolean) -> Unit,
     onOtherFilesAskChange: (Boolean) -> Unit,
     onContentPreferenceChange: (String, BrowserStore.ContentPreference) -> Unit,
+    onShowMessage: (String) -> Unit = {},
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -104,7 +104,7 @@ fun DownloadSettingsScreen(
                 onSaveFolderChange(BrowserStore.DownloadFolder.CUSTOM)
                 pickingFolder = false
             } else {
-                Toast.makeText(context, R.string.dl_folder_invalid, Toast.LENGTH_LONG).show()
+                onShowMessage(context.getString(R.string.dl_folder_invalid))
             }
         }
     }
