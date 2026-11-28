@@ -52,10 +52,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -80,6 +82,7 @@ import com.lightning.browser.ui.theme.EyebrowTextStyle
 import com.lightning.browser.ui.theme.LightningMotion
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.rememberLightningHaptics
+import java.io.File
 import kotlinx.coroutines.delay
 import kotlin.math.ceil
 
@@ -122,9 +125,11 @@ fun PrintScreen(
     pageTitle: String,
     pageDomain: String,
     previewBitmap: Bitmap?,
+    pdfFile: File? = null,
+    pdfPageCount: Int = 0,
     onBack: () -> Unit,
     onSavePdf: (PrintAttributes.MediaSize, Boolean, Set<Int>) -> Unit,
-    onPrint: (PrintAttributes) -> Unit,
+    onPrint: (PrintAttributes, Set<Int>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
@@ -162,8 +167,10 @@ fun PrintScreen(
         if (orientation == PrintOrientation.LANDSCAPE) 1f / portrait else portrait
     }
 
-    val totalPages = remember(previewBitmap, aspectRatio) {
-        if (previewBitmap == null || previewBitmap.width <= 0) {
+    val totalPages = remember(pdfFile, pdfPageCount, previewBitmap, aspectRatio) {
+        if (pdfFile != null) {
+            pdfPageCount.coerceAtLeast(1)
+        } else if (previewBitmap == null || previewBitmap.width <= 0) {
             1
         } else {
             val pageSliceHeight = (previewBitmap.width / aspectRatio).coerceAtLeast(1f)
@@ -186,9 +193,31 @@ fun PrintScreen(
         }
     }
 
-    val pageBitmap = remember(previewBitmap, currentPage, totalPages, aspectRatio) {
-        slicePreviewPage(previewBitmap, currentPage, aspectRatio)
+    val pdfPreviewPage by produceState<RenderedPdfPage?>(initialValue = null, pdfFile, currentPage) {
+        val file = pdfFile
+        if (file == null || !file.exists()) {
+            value = null
+            return@produceState
+        }
+        val src = runCatching { PdfDocumentSource(file) }.getOrNull()
+        value = try {
+            src?.renderPage(currentPage - 1, 480)
+        } finally {
+            src?.close()
+        }
     }
+
+    DisposableEffect(pdfPreviewPage) {
+        val bmp = pdfPreviewPage?.bitmap
+        onDispose {
+            if (bmp != null && !bmp.isRecycled) bmp.recycle()
+        }
+    }
+
+    val webPageBitmap = remember(pdfFile, previewBitmap, currentPage, totalPages, aspectRatio) {
+        if (pdfFile != null) null else slicePreviewPage(previewBitmap, currentPage, aspectRatio)
+    }
+    val pageBitmap = if (pdfFile != null) pdfPreviewPage?.bitmap else webPageBitmap
 
     Column(
         modifier = modifier
@@ -210,7 +239,9 @@ fun PrintScreen(
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = stringResource(R.string.print_sheet_title),
+                    text = stringResource(
+                        if (pdfFile != null) R.string.pdf_viewer_print_sheet_title else R.string.print_sheet_title,
+                    ),
                     style = MaterialTheme.typography.titleLarge,
                     color = colors.onSurface,
                 )
@@ -348,6 +379,7 @@ fun PrintScreen(
                 aspectRatio = aspectRatio,
                 monochrome = colorMode == PrintColor.MONOCHROME,
                 included = currentPage in selectedPages,
+                isPdf = pdfFile != null,
                 pageTitle = pageTitle.ifBlank { pageDomain },
             )
 
@@ -577,7 +609,6 @@ fun PrintScreen(
                         baseSize.asPortrait()
                     }
                     val isMono = colorMode == PrintColor.MONOCHROME
-                    onBack()
                     if (selectedPrinter == "pdf") {
                         onSavePdf(mediaSize, isMono, selectedPages)
                     } else {
@@ -590,8 +621,9 @@ fun PrintScreen(
                             .setMediaSize(mediaSize)
                             .setColorMode(colorAttr)
                             .build()
-                        onPrint(attrs)
+                        onPrint(attrs, selectedPages)
                     }
+                    onBack()
                 },
                 shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.buttonColors(
@@ -630,6 +662,7 @@ private fun PrintPaperPreview(
     aspectRatio: Float,
     monochrome: Boolean,
     included: Boolean,
+    isPdf: Boolean,
     pageTitle: String,
 ) {
     val colors = LightningTheme.colors
@@ -662,13 +695,13 @@ private fun PrintPaperPreview(
                 .aspectRatio(animatedRatio),
         ) {
             Box(Modifier.fillMaxSize()) {
-                if (pageBitmap != null) {
+                if (pageBitmap != null && !pageBitmap.isRecycled) {
                     val img = remember(pageBitmap) { pageBitmap.asImageBitmap() }
                     Image(
                         bitmap = img,
                         contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        alignment = Alignment.TopCenter,
+                        contentScale = if (isPdf) ContentScale.Fit else ContentScale.Crop,
+                        alignment = if (isPdf) Alignment.Center else Alignment.TopCenter,
                         colorFilter = if (monochrome) monoFilter else null,
                         alpha = if (included) 1f else 0.3f,
                         modifier = Modifier.fillMaxSize(),

@@ -1,18 +1,18 @@
 package com.lightning.browser.ui.browser
 
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color as AndroidColor
-import android.graphics.pdf.PdfRenderer
-import android.os.ParcelFileDescriptor
+import android.text.format.Formatter
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -27,98 +27,291 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FitScreen
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
 import com.lightning.browser.ui.components.TonalIconButton
 import com.lightning.browser.ui.theme.LightningTheme
 import java.io.File
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
+import java.util.Locale
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PdfViewerScreen(
     title: String,
+    sourceUrl: String?,
     pdfFile: File?,
     isLoading: Boolean,
     loadError: Boolean,
+    initialPage: Int,
+    nightMode: Boolean,
+    onToggleNightMode: () -> Unit,
+    onDocumentLoaded: (Int) -> Unit,
+    onPageChanged: (Int) -> Unit,
     onSaveToDownloads: () -> Unit,
+    onShare: () -> Unit,
     onOpenExternal: () -> Unit,
+    onPrint: () -> Unit,
+    onRetry: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
-    var rendererHolder by remember(pdfFile) { mutableStateOf<PdfRendererHolder?>(null) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+
+    var documentSource by remember(pdfFile) { mutableStateOf<PdfDocumentSource?>(null) }
     var openError by remember(pdfFile) { mutableStateOf(false) }
+    var isEncryptedError by remember(pdfFile) { mutableStateOf(false) }
+
+    val latestOnDocumentLoaded by rememberUpdatedState(onDocumentLoaded)
+    val latestOnPageChanged by rememberUpdatedState(onPageChanged)
 
     DisposableEffect(pdfFile) {
+        openError = false
+        isEncryptedError = false
         val holder = if (pdfFile != null && pdfFile.exists()) {
-            runCatching {
-                val fd = ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY)
-                val renderer = PdfRenderer(fd)
-                PdfRendererHolder(fd, renderer)
-            }.onFailure { openError = true }.getOrNull()
+            try {
+                PdfDocumentSource(pdfFile)
+            } catch (_: SecurityException) {
+                isEncryptedError = true
+                null
+            } catch (_: Throwable) {
+                openError = true
+                null
+            }
         } else {
             null
         }
-        rendererHolder = holder
+        documentSource = holder
+        if (holder != null && holder.pageCount > 0) {
+            latestOnDocumentLoaded(holder.pageCount)
+        }
         onDispose {
             holder?.close()
+            if (documentSource === holder) {
+                documentSource = null
+            }
         }
     }
 
     val listState = rememberLazyListState()
-    val pageCount = rendererHolder?.pageCount ?: 0
+    val pageCount = documentSource?.pageCount ?: 0
     val currentPage by remember(pageCount) {
         derivedStateOf {
             if (pageCount == 0) 0 else (listState.firstVisibleItemIndex + 1).coerceIn(1, pageCount)
         }
     }
+    val latestCurrentPage by rememberUpdatedState(currentPage)
 
+    val startPage = remember(pdfFile) { initialPage }
+    var appliedInitialScroll by remember(pdfFile) { mutableStateOf(false) }
+
+    LaunchedEffect(documentSource, pageCount) {
+        if (documentSource != null && pageCount > 0 && !appliedInitialScroll) {
+            appliedInitialScroll = true
+            val target = startPage.coerceIn(1, pageCount)
+            if (target > 1) {
+                listState.scrollToItem(target - 1)
+            }
+        }
+    }
+
+    LaunchedEffect(listState, pageCount) {
+        if (pageCount <= 0) return@LaunchedEffect
+        snapshotFlow { currentPage }
+            .collectLatest { page ->
+                if (page > 0) {
+                    delay(180L)
+                    latestOnPageChanged(page)
+                }
+            }
+    }
+
+    DisposableEffect(pdfFile) {
+        onDispose {
+            if (latestCurrentPage > 0) {
+                latestOnPageChanged(latestCurrentPage)
+            }
+        }
+    }
+
+    var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     var scale by remember { mutableFloatStateOf(1f) }
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
-    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-        val nextScale = (scale * zoomChange).coerceIn(1f, 4f)
+
+    var showMenu by remember { mutableStateOf(false) }
+    var showGoToPage by remember { mutableStateOf(false) }
+    var showInfo by remember { mutableStateOf(false) }
+
+    BackHandler(enabled = showGoToPage) { showGoToPage = false }
+    BackHandler(enabled = showInfo) { showInfo = false }
+
+    fun clampOffsets(nextScale: Float, rawX: Float, rawY: Float): Pair<Float, Float> {
+        if (nextScale <= 1f || viewportSize.width <= 0 || viewportSize.height <= 0) {
+            return 0f to 0f
+        }
+        val maxX = viewportSize.width * (nextScale - 1f) / 2f
+        val maxY = viewportSize.height * (nextScale - 1f) / 2f
+        return rawX.coerceIn(-maxX, maxX) to rawY.coerceIn(-maxY, maxY)
+    }
+
+    fun applyScaleCentered(targetScale: Float) {
+        val nextScale = targetScale.coerceIn(0.35f, 5f)
+        val factor = if (scale > 0f) nextScale / scale else 1f
+        val (clampedX, clampedY) = clampOffsets(nextScale, offsetX * factor, offsetY * factor)
         scale = nextScale
-        if (nextScale > 1f) {
-            offsetX += panChange.x
-            offsetY += panChange.y
+        offsetX = clampedX
+        offsetY = clampedY
+    }
+
+    fun goToPage(page: Int) {
+        if (pageCount <= 0) return
+        val clamped = page.coerceIn(1, pageCount)
+        scope.launch {
+            listState.animateScrollToItem(clamped - 1)
+        }
+    }
+
+    val paddingPx = with(density) { 24.dp.toPx() }
+    val baseWidthPx = ((viewportSize.width - paddingPx).roundToInt()).coerceAtLeast(480)
+    val renderWidthPx = remember(baseWidthPx, scale) {
+        val multiplier = when {
+            scale <= 1.25f -> 1f
+            scale <= 2f -> 1.5f
+            scale <= 3f -> 2f
+            else -> 2.5f
+        }
+        (baseWidthPx * multiplier).roundToInt().coerceIn(480, 2048)
+    }
+
+    val fitPageScale = remember(documentSource, viewportSize, baseWidthPx) {
+        val src = documentSource
+        if (src == null || viewportSize.height <= 0 || baseWidthPx <= 0) {
+            1f
         } else {
-            offsetX = 0f
-            offsetY = 0f
+            val pageHeightPx = baseWidthPx / src.firstPageAspect.coerceAtLeast(0.1f)
+            (viewportSize.height / pageHeightPx).coerceIn(0.35f, 1f)
+        }
+    }
+    val isFitPageActive = kotlin.math.abs(scale - fitPageScale) < 0.03f && fitPageScale < 0.97f
+
+    val canActOnDoc = pdfFile != null && pageCount > 0 && !isLoading && !loadError && !openError && !isEncryptedError
+
+    val nightFilter = remember {
+        ColorFilter.colorMatrix(
+            ColorMatrix(
+                floatArrayOf(
+                    -1f, 0f, 0f, 0f, 255f,
+                    0f, -1f, 0f, 0f, 255f,
+                    0f, 0f, -1f, 0f, 255f,
+                    0f, 0f, 0f, 1f, 0f,
+                ),
+            ),
+        )
+    }
+
+    if (showGoToPage && pageCount > 0) {
+        GoToPageDialog(
+            currentPage = currentPage,
+            pageCount = pageCount,
+            onDismiss = { showGoToPage = false },
+            onConfirm = { target ->
+                showGoToPage = false
+                goToPage(target)
+            },
+        )
+    }
+
+    if (showInfo && pdfFile != null && documentSource != null) {
+        val infoSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showInfo = false },
+            sheetState = infoSheetState,
+            containerColor = colors.surfaceContainerLow,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        ) {
+            PdfDocumentInfoSheetContent(
+                title = title.ifBlank { "PDF" },
+                sourceUrl = sourceUrl,
+                fileSizeBytes = pdfFile.length(),
+                pageCount = pageCount,
+                firstPageSizePoints = documentSource!!.pageSizePoints(0),
+            )
         }
     }
 
@@ -159,10 +352,14 @@ fun PdfViewerScreen(
                             text = stringResource(R.string.pdf_viewer_page_of, currentPage, pageCount),
                             style = MaterialTheme.typography.labelMedium,
                             color = colors.onSurfaceVariant,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { showGoToPage = true }
+                                .padding(vertical = 2.dp),
                         )
                     }
                 }
-                if (pdfFile != null && !isLoading && !loadError && !openError) {
+                if (canActOnDoc) {
                     IconButton(onClick = onSaveToDownloads) {
                         Icon(
                             imageVector = Icons.Filled.FileDownload,
@@ -170,11 +367,69 @@ fun PdfViewerScreen(
                             tint = colors.onSurface,
                         )
                     }
-                    IconButton(onClick = onOpenExternal) {
+                }
+                Box {
+                    IconButton(onClick = { showMenu = true }) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                            contentDescription = stringResource(R.string.pdf_viewer_open_external),
+                            imageVector = Icons.Filled.MoreVert,
+                            contentDescription = stringResource(R.string.pdf_viewer_more),
                             tint = colors.onSurface,
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                        containerColor = colors.surfaceContainerHigh,
+                        shape = RoundedCornerShape(20.dp),
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.pdf_viewer_share)) },
+                            leadingIcon = { Icon(Icons.Filled.Share, null) },
+                            enabled = canActOnDoc,
+                            onClick = {
+                                showMenu = false
+                                onShare()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.pdf_viewer_open_external)) },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, null) },
+                            enabled = pdfFile != null && !isLoading && !loadError && !openError && !isEncryptedError,
+                            onClick = {
+                                showMenu = false
+                                onOpenExternal()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.pdf_viewer_print)) },
+                            leadingIcon = { Icon(Icons.Filled.Print, null) },
+                            enabled = canActOnDoc,
+                            onClick = {
+                                showMenu = false
+                                onPrint()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.pdf_viewer_night_mode)) },
+                            leadingIcon = { Icon(Icons.Filled.DarkMode, null) },
+                            trailingIcon = {
+                                if (nightMode) {
+                                    Icon(Icons.Filled.Check, null, tint = colors.primary)
+                                }
+                            },
+                            onClick = {
+                                showMenu = false
+                                onToggleNightMode()
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.pdf_viewer_info)) },
+                            leadingIcon = { Icon(Icons.Filled.Info, null) },
+                            enabled = canActOnDoc,
+                            onClick = {
+                                showMenu = false
+                                showInfo = true
+                            },
                         )
                     }
                 }
@@ -186,20 +441,62 @@ fun PdfViewerScreen(
                 .weight(1f)
                 .fillMaxWidth()
                 .clipToBounds()
+                .onSizeChanged { viewportSize = it }
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onDoubleTap = {
+                        onDoubleTap = { tapOffset ->
                             if (scale > 1.1f) {
                                 scale = 1f
                                 offsetX = 0f
                                 offsetY = 0f
                             } else {
-                                scale = 2f
+                                val targetScale = 2f
+                                val centerX = viewportSize.width / 2f
+                                val centerY = viewportSize.height / 2f
+                                val factor = targetScale / scale
+                                val rawX = offsetX * factor + (tapOffset.x - centerX) * (1f - factor)
+                                val rawY = offsetY * factor + (tapOffset.y - centerY) * (1f - factor)
+                                val (cx, cy) = clampOffsets(targetScale, rawX, rawY)
+                                scale = targetScale
+                                offsetX = cx
+                                offsetY = cy
                             }
                         },
                     )
                 }
-                .transformable(state = transformState, enabled = scale > 1f),
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        do {
+                            val event = awaitPointerEvent()
+                            val pressedCount = event.changes.count { it.pressed }
+                            if (pressedCount >= 2) {
+                                val zoom = event.calculateZoom()
+                                val pan = event.calculatePan()
+                                val centroid = event.calculateCentroid(useCurrent = true)
+                                val nextScale = (scale * zoom).coerceIn(0.35f, 5f)
+                                val factor = if (scale > 0f) nextScale / scale else 1f
+                                val centerX = viewportSize.width / 2f
+                                val centerY = viewportSize.height / 2f
+                                val rawX = (offsetX + pan.x) * factor + (centroid.x - centerX) * (1f - factor)
+                                val rawY = (offsetY + pan.y) * factor + (centroid.y - centerY) * (1f - factor)
+                                val (cx, cy) = clampOffsets(nextScale, rawX, rawY)
+                                scale = nextScale
+                                offsetX = cx
+                                offsetY = cy
+                                event.changes.forEach { if (it.positionChanged()) it.consume() }
+                            } else if (scale > 1f) {
+                                val pan = event.calculatePan()
+                                if (pan.x != 0f || pan.y != 0f) {
+                                    val (cx, cy) = clampOffsets(scale, offsetX + pan.x, offsetY + pan.y)
+                                    offsetX = cx
+                                    offsetY = cy
+                                    event.changes.forEach { if (it.positionChanged()) it.consume() }
+                                }
+                            }
+                        } while (event.changes.any { it.pressed })
+                    }
+                },
             contentAlignment = Alignment.Center,
         ) {
             when {
@@ -214,16 +511,37 @@ fun PdfViewerScreen(
                         )
                     }
                 }
-                loadError || openError || rendererHolder == null -> {
-                    Text(
-                        text = stringResource(R.string.pdf_viewer_error),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = colors.onSurfaceVariant,
-                    )
+                isEncryptedError -> {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.pdf_viewer_encrypted),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = colors.onSurfaceVariant,
+                        )
+                    }
+                }
+                loadError || openError || documentSource == null -> {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.pdf_viewer_error),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = colors.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Button(onClick = onRetry) {
+                            Text(stringResource(R.string.pdf_viewer_retry))
+                        }
+                    }
                 }
                 else -> {
-                    val holder = rendererHolder!!
-                    BoxWithConstraints(
+                    val holder = documentSource!!
+                    Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer {
@@ -233,9 +551,6 @@ fun PdfViewerScreen(
                                 translationY = offsetY
                             },
                     ) {
-                        val targetWidthPx = with(LocalDensity.current) {
-                            (maxWidth - 24.dp).roundToPx().coerceIn(480, 2048)
-                        }
                         LazyColumn(
                             state = listState,
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
@@ -246,10 +561,182 @@ fun PdfViewerScreen(
                                 PdfPageCard(
                                     holder = holder,
                                     pageIndex = pageIndex,
-                                    targetWidthPx = targetWidthPx,
+                                    renderWidthPx = renderWidthPx,
+                                    nightMode = nightMode,
+                                    nightFilter = nightFilter,
                                 )
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        if (canActOnDoc) {
+            PdfBottomToolbar(
+                currentPage = currentPage,
+                pageCount = pageCount,
+                scale = scale,
+                isFitPage = isFitPageActive,
+                onPrevPage = { goToPage(currentPage - 1) },
+                onNextPage = { goToPage(currentPage + 1) },
+                onPagePillClick = { showGoToPage = true },
+                onScrubFinished = { target -> goToPage(target) },
+                onZoomOut = { applyScaleCentered(scale - 0.25f) },
+                onZoomReset = { applyScaleCentered(1f) },
+                onZoomIn = { applyScaleCentered(scale + 0.25f) },
+                onToggleFit = {
+                    if (isFitPageActive) {
+                        applyScaleCentered(1f)
+                    } else {
+                        applyScaleCentered(fitPageScale)
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun PdfBottomToolbar(
+    currentPage: Int,
+    pageCount: Int,
+    scale: Float,
+    isFitPage: Boolean,
+    onPrevPage: () -> Unit,
+    onNextPage: () -> Unit,
+    onPagePillClick: () -> Unit,
+    onScrubFinished: (Int) -> Unit,
+    onZoomOut: () -> Unit,
+    onZoomReset: () -> Unit,
+    onZoomIn: () -> Unit,
+    onToggleFit: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    var scrubbing by remember { mutableStateOf(false) }
+    var scrubValue by remember { mutableFloatStateOf(currentPage.toFloat()) }
+
+    LaunchedEffect(currentPage, scrubbing) {
+        if (!scrubbing) {
+            scrubValue = currentPage.toFloat()
+        }
+    }
+
+    val displayedPage = if (scrubbing) scrubValue.roundToInt().coerceIn(1, pageCount) else currentPage
+
+    Surface(
+        color = colors.surfaceContainerLow,
+        tonalElevation = 4.dp,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            if (pageCount > 1) {
+                Slider(
+                    value = scrubValue.coerceIn(1f, pageCount.toFloat()),
+                    onValueChange = {
+                        scrubbing = true
+                        scrubValue = it
+                    },
+                    onValueChangeFinished = {
+                        val target = scrubValue.roundToInt().coerceIn(1, pageCount)
+                        scrubbing = false
+                        onScrubFinished(target)
+                    },
+                    valueRange = 1f..pageCount.toFloat(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(32.dp),
+                )
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onPrevPage,
+                        enabled = currentPage > 1,
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                            contentDescription = stringResource(R.string.find_in_page_prev),
+                        )
+                    }
+                    Surface(
+                        onClick = onPagePillClick,
+                        shape = RoundedCornerShape(16.dp),
+                        color = colors.surfaceContainerHigh,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.pdf_viewer_page_pill, displayedPage, pageCount),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colors.onSurface,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        )
+                    }
+                    IconButton(
+                        onClick = onNextPage,
+                        enabled = currentPage < pageCount,
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = stringResource(R.string.find_in_page_next),
+                        )
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onZoomOut,
+                        enabled = scale > 0.36f,
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Remove,
+                            contentDescription = stringResource(R.string.pdf_viewer_zoom_out),
+                        )
+                    }
+                    Surface(
+                        onClick = onZoomReset,
+                        shape = RoundedCornerShape(16.dp),
+                        color = colors.surfaceContainerHigh,
+                    ) {
+                        Text(
+                            text = "${(scale * 100f).roundToInt()}%",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colors.onSurface,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        )
+                    }
+                    IconButton(
+                        onClick = onZoomIn,
+                        enabled = scale < 4.99f,
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = stringResource(R.string.pdf_viewer_zoom_in),
+                        )
+                    }
+                    IconButton(
+                        onClick = onToggleFit,
+                        modifier = Modifier.size(36.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.FitScreen,
+                            contentDescription = stringResource(
+                                if (isFitPage) R.string.pdf_viewer_fit_width else R.string.pdf_viewer_fit_page,
+                            ),
+                            tint = if (isFitPage) colors.primary else colors.onSurface,
+                        )
                     }
                 }
             }
@@ -259,19 +746,31 @@ fun PdfViewerScreen(
 
 @Composable
 private fun PdfPageCard(
-    holder: PdfRendererHolder,
+    holder: PdfDocumentSource,
     pageIndex: Int,
-    targetWidthPx: Int,
+    renderWidthPx: Int,
+    nightMode: Boolean,
+    nightFilter: ColorFilter,
 ) {
     val colors = LightningTheme.colors
-    val rendered by produceState<RenderedPdfPage?>(initialValue = null, holder, pageIndex, targetWidthPx) {
-        value = holder.renderPage(pageIndex, targetWidthPx)
+    val rendered by produceState<RenderedPdfPage?>(initialValue = null, holder, pageIndex, renderWidthPx) {
+        value = holder.renderPage(pageIndex, renderWidthPx)
     }
 
     val page = rendered
+    DisposableEffect(page) {
+        onDispose {
+            page?.bitmap?.let { bmp ->
+                if (!bmp.isRecycled) bmp.recycle()
+            }
+        }
+    }
+
+    val cardColor = if (nightMode) Color.Black else Color.White
+
     Surface(
         shape = RoundedCornerShape(12.dp),
-        color = androidx.compose.ui.graphics.Color.White,
+        color = cardColor,
         shadowElevation = 2.dp,
         modifier = Modifier
             .fillMaxWidth()
@@ -283,15 +782,22 @@ private fun PdfPageCard(
                 },
             ),
     ) {
-        if (page != null) {
+        if (page != null && !page.bitmap.isRecycled) {
+            val imageBitmap = remember(page) { page.bitmap.asImageBitmap() }
             Image(
-                bitmap = page.bitmap.asImageBitmap(),
-                contentDescription = null,
+                bitmap = imageBitmap,
+                contentDescription = stringResource(R.string.pdf_viewer_page_description, pageIndex + 1),
                 contentScale = ContentScale.FillWidth,
+                colorFilter = if (nightMode) nightFilter else null,
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(cardColor),
+                contentAlignment = Alignment.Center,
+            ) {
                 CircularProgressIndicator(
                     color = colors.primary,
                     modifier = Modifier.size(24.dp),
@@ -302,40 +808,141 @@ private fun PdfPageCard(
     }
 }
 
-private data class RenderedPdfPage(
-    val bitmap: Bitmap,
-    val width: Int,
-    val height: Int,
-)
-
-private class PdfRendererHolder(
-    private val fd: ParcelFileDescriptor,
-    private val renderer: PdfRenderer,
+@Composable
+private fun GoToPageDialog(
+    currentPage: Int,
+    pageCount: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
 ) {
-    val pageCount: Int = renderer.pageCount
-    private val mutex = Mutex()
-    private var closed = false
+    var input by remember { mutableStateOf(currentPage.toString()) }
+    val parsed = input.trim().toIntOrNull()
+    val valid = parsed != null && parsed in 1..pageCount
 
-    suspend fun renderPage(index: Int, targetWidthPx: Int): RenderedPdfPage? = withContext(Dispatchers.IO) {
-        mutex.withLock {
-            if (closed || index !in 0 until pageCount) return@withContext null
-            runCatching {
-                renderer.openPage(index).use { page ->
-                    val ratio = page.height.toFloat() / page.width.toFloat().coerceAtLeast(1f)
-                    val w = targetWidthPx
-                    val h = (w * ratio).toInt().coerceAtLeast(1)
-                    val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-                    Canvas(bitmap).drawColor(AndroidColor.WHITE)
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    RenderedPdfPage(bitmap, w, h)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.pdf_viewer_go_to_page)) },
+        text = {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { next ->
+                    if (next.length <= 6 && next.all { it.isDigit() }) {
+                        input = next
+                    }
+                },
+                label = { Text(stringResource(R.string.pdf_viewer_page_number, pageCount)) },
+                singleLine = true,
+                isError = input.isNotEmpty() && !valid,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { if (valid && parsed != null) onConfirm(parsed) },
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                enabled = valid,
+                onClick = { if (valid && parsed != null) onConfirm(parsed) },
+            ) {
+                Text(stringResource(R.string.pdf_viewer_go))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.pdf_viewer_cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun PdfDocumentInfoSheetContent(
+    title: String,
+    sourceUrl: String?,
+    fileSizeBytes: Long,
+    pageCount: Int,
+    firstPageSizePoints: Pair<Int, Int>,
+) {
+    val colors = LightningTheme.colors
+    val context = LocalContext.current
+    val formattedSize = remember(fileSizeBytes) { Formatter.formatShortFileSize(context, fileSizeBytes) }
+    val (wPt, hPt) = firstPageSizePoints
+    val wMm = (wPt * 25.4 / 72.0).roundToInt()
+    val hMm = (hPt * 25.4 / 72.0).roundToInt()
+    val dimText = String.format(Locale.US, "%d × %d pt (%d × %d mm)", wPt, hPt, wMm, hMm)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 28.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.onSurface,
+        )
+        InfoRow(label = stringResource(R.string.pdf_viewer_info_pages), value = pageCount.toString())
+        InfoRow(label = stringResource(R.string.pdf_viewer_info_size), value = formattedSize)
+        InfoRow(label = stringResource(R.string.pdf_viewer_info_page_size), value = dimText)
+        if (!sourceUrl.isNullOrBlank()) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = colors.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    Text(
+                        text = stringResource(R.string.pdf_viewer_info_source),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    SelectionContainer {
+                        Text(
+                            text = sourceUrl,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.onSurface,
+                        )
+                    }
                 }
-            }.getOrNull()
+            }
         }
     }
+}
 
-    fun close() {
-        closed = true
-        runCatching { renderer.close() }
-        runCatching { fd.close() }
+@Composable
+private fun InfoRow(label: String, value: String) {
+    val colors = LightningTheme.colors
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = colors.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                color = colors.onSurfaceVariant,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = colors.onSurface,
+            )
+        }
     }
 }

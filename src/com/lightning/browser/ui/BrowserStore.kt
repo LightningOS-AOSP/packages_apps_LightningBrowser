@@ -62,6 +62,9 @@ object BrowserStore {
     private const val KEY_DL_CONTENT_ACTIONS = "dl_content_actions"
     private const val KEY_DISMISSED_CLIP_TIMESTAMP = "dismissed_clip_timestamp"
     private const val KEY_CLOSED_TABS = "recently_closed_tabs"
+    private const val KEY_PDF_POSITIONS = "pdf_positions"
+    private const val KEY_PDF_NIGHT_MODE = "pdf_night_mode"
+    private const val MAX_PDF_POSITIONS = 50
     const val MAX_CLOSED_TABS = 10
     const val CLOSED_TAB_EXPIRY_MS = 24L * 60L * 60L * 1000L
     private const val MAX_HISTORY = 200
@@ -866,5 +869,66 @@ object BrowserStore {
                 )
             }
         prefs(context).edit().putString(KEY_CLOSED_TABS, array.toString()).apply()
+    }
+
+    fun pdfPositionKey(url: String?, title: String): String {
+        val (prefix, raw) = if (!url.isNullOrBlank()) {
+            "u:" to url
+        } else {
+            "t:" to title
+        }
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(raw.toByteArray(Charsets.UTF_8))
+        val hex = digest.joinToString("") { "%02x".format(it) }
+        return prefix + hex
+    }
+
+    fun loadPdfPosition(context: Context, key: String): Int {
+        val raw = prefs(context).getString(KEY_PDF_POSITIONS, null) ?: return 1
+        return runCatching {
+            val obj = JSONObject(raw)
+            val entry = obj.optJSONObject(key) ?: return@runCatching 1
+            entry.optInt("page", 1).coerceAtLeast(1)
+        }.getOrDefault(1)
+    }
+
+    fun savePdfPosition(context: Context, key: String, page: Int) {
+        if (page < 1) return
+        val obj = runCatching {
+            val raw = prefs(context).getString(KEY_PDF_POSITIONS, null)
+            if (raw != null) JSONObject(raw) else JSONObject()
+        }.getOrElse { JSONObject() }
+
+        obj.put(
+            key,
+            JSONObject()
+                .put("page", page)
+                .put("updatedAt", System.currentTimeMillis()),
+        )
+
+        if (obj.length() > MAX_PDF_POSITIONS) {
+            val entries = buildList {
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val ts = obj.optJSONObject(k)?.optLong("updatedAt", 0L) ?: 0L
+                    add(k to ts)
+                }
+            }.sortedByDescending { it.second }.take(MAX_PDF_POSITIONS)
+            val pruned = JSONObject()
+            entries.forEach { (k, _) ->
+                obj.optJSONObject(k)?.let { pruned.put(k, it) }
+            }
+            prefs(context).edit().putString(KEY_PDF_POSITIONS, pruned.toString()).apply()
+        } else {
+            prefs(context).edit().putString(KEY_PDF_POSITIONS, obj.toString()).apply()
+        }
+    }
+
+    fun loadPdfNightMode(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_PDF_NIGHT_MODE, false)
+
+    fun savePdfNightMode(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_PDF_NIGHT_MODE, enabled).apply()
     }
 }

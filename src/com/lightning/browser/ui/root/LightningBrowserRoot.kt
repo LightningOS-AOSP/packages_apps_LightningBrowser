@@ -103,6 +103,8 @@ import com.lightning.browser.ui.browser.AppHandlerResolver
 import com.lightning.browser.ui.browser.BrowserDownloads
 import com.lightning.browser.ui.browser.BrowserScreen
 import com.lightning.browser.ui.browser.ClipboardUrlHelper
+import com.lightning.browser.ui.browser.PdfFilePrintAdapter
+import com.lightning.browser.ui.browser.PdfPrint
 import com.lightning.browser.ui.browser.PdfViewerScreen
 import com.lightning.browser.ui.browser.PrintScreen
 import com.lightning.browser.ui.browser.TabNavState
@@ -343,9 +345,17 @@ fun LightningBrowserRoot(
     }
     val privateDownloadedFiles = remember { mutableStateListOf<String>() }
     var pdfTitle by remember { mutableStateOf("") }
+    var pdfUrl by remember { mutableStateOf<String?>(null) }
+    var pdfUserAgent by remember { mutableStateOf<String?>(null) }
     var pdfFile by remember { mutableStateOf<java.io.File?>(null) }
     var pdfLoading by remember { mutableStateOf(false) }
     var pdfError by remember { mutableStateOf(false) }
+    var pdfInitialPage by remember { mutableIntStateOf(1) }
+    var pdfCurrentPage by remember { mutableIntStateOf(1) }
+    var pdfPageCount by remember { mutableIntStateOf(0) }
+    var pdfNightMode by remember { mutableStateOf(BrowserStore.loadPdfNightMode(context)) }
+    var printPdfFile by remember { mutableStateOf<java.io.File?>(null) }
+    var printPdfPageCount by remember { mutableIntStateOf(0) }
     var blockedCount by remember { mutableIntStateOf(0) }
     var dnsResolvedCount by remember { mutableIntStateOf(0) }
 
@@ -705,6 +715,8 @@ fun LightningBrowserRoot(
     }
 
     fun openPrintSheet() {
+        printPdfFile = null
+        printPdfPageCount = 0
         val wv = webViews[activeIndex]
         printPreviewBitmap = if (wv != null && wv.width > 0 && wv.height > 0) {
             runCatching {
@@ -722,6 +734,42 @@ fun LightningBrowserRoot(
             null
         }
         navigateTo(LightningScreen.PRINT)
+    }
+
+    fun openPdfPrintSheet(file: java.io.File) {
+        printPdfFile = file
+        printPdfPageCount = pdfPageCount.coerceAtLeast(1)
+        printPreviewBitmap = null
+        pdfInitialPage = pdfCurrentPage.coerceAtLeast(1)
+        navigateTo(LightningScreen.PRINT)
+    }
+
+    fun startPdfDownload(url: String, userAgent: String?, title: String, resetPage: Boolean) {
+        pdfFile?.let { runCatching { it.delete() } }
+        pdfUrl = url
+        pdfUserAgent = userAgent
+        pdfTitle = title
+        pdfFile = null
+        pdfLoading = true
+        pdfError = false
+        pdfPageCount = 0
+        if (resetPage) {
+            val savedPage = if (incognito) {
+                1
+            } else {
+                BrowserStore.loadPdfPosition(context, BrowserStore.pdfPositionKey(url, title))
+            }
+            pdfInitialPage = savedPage
+            pdfCurrentPage = savedPage
+        }
+        BrowserDownloads.downloadToCacheFile(context, url, userAgent, title) { file ->
+            pdfLoading = false
+            if (file != null) {
+                pdfFile = file
+            } else {
+                pdfError = true
+            }
+        }
     }
 
     fun saveOfflinePage() {
@@ -1041,10 +1089,17 @@ fun LightningBrowserRoot(
             }
             LightningScreen.SITE_PERMISSIONS -> navigateBack(LightningScreen.PRIVACY)
             LightningScreen.SAVED_PAGES, LightningScreen.RECENTLY_CLOSED -> navigateBack(LightningScreen.TABS)
-            LightningScreen.PRINT -> navigateBack(LightningScreen.BROWSER)
+            LightningScreen.PRINT -> {
+                val returnToPdf = printPdfFile != null
+                printPdfFile = null
+                printPdfPageCount = 0
+                navigateBack(if (returnToPdf) LightningScreen.PDF_VIEWER else LightningScreen.BROWSER)
+            }
             LightningScreen.PDF_VIEWER -> {
                 pdfFile?.let { runCatching { it.delete() } }
                 pdfFile = null
+                pdfUrl = null
+                pdfUserAgent = null
                 navigateBack(LightningScreen.BROWSER)
             }
             else -> navigateBack(LightningScreen.SETTINGS)
@@ -1196,20 +1251,8 @@ fun LightningBrowserRoot(
                         },
                         onShowMessage = ::showBanner,
                         onOpenPdf = { url, userAgent, title ->
-                            pdfFile?.let { runCatching { it.delete() } }
-                            pdfTitle = title
-                            pdfFile = null
-                            pdfLoading = true
-                            pdfError = false
                             navigateTo(LightningScreen.PDF_VIEWER)
-                            BrowserDownloads.downloadToCacheFile(context, url, userAgent, title) { file ->
-                                pdfLoading = false
-                                if (file != null) {
-                                    pdfFile = file
-                                } else {
-                                    pdfError = true
-                                }
-                            }
+                            startPdfDownload(url, userAgent, title, resetPage = true)
                         },
                         onBackHome = {
                             captureTabThumbnail(activeIndex)
@@ -1342,19 +1385,91 @@ fun LightningBrowserRoot(
                         },
                         onBack = { navigateBack(LightningScreen.TABS) },
                     )
-                    LightningScreen.PRINT -> PrintScreen(
-                        pageTitle = tabs.getOrNull(activeIndex)?.title.orEmpty(),
-                        pageDomain = tabs.getOrNull(activeIndex)?.domain.orEmpty(),
-                        previewBitmap = printPreviewBitmap,
-                        onBack = { navigateBack(LightningScreen.BROWSER) },
-                        onSavePdf = { mediaSize, mono, pages -> savePageAsPdf(mediaSize, mono, pages) },
-                        onPrint = { attrs -> printCurrentPage(attrs) },
-                    )
+                    LightningScreen.PRINT -> {
+                        val activePdf = printPdfFile
+                        val pdfDomain = pdfUrl?.let { runCatching { android.net.Uri.parse(it).host }.getOrNull() }.orEmpty()
+                        PrintScreen(
+                            pageTitle = if (activePdf != null) pdfTitle.ifBlank { "PDF" } else tabs.getOrNull(activeIndex)?.title.orEmpty(),
+                            pageDomain = if (activePdf != null) pdfDomain else tabs.getOrNull(activeIndex)?.domain.orEmpty(),
+                            previewBitmap = printPreviewBitmap,
+                            pdfFile = activePdf,
+                            pdfPageCount = printPdfPageCount,
+                            onBack = {
+                                val returnToPdf = printPdfFile != null
+                                printPdfFile = null
+                                printPdfPageCount = 0
+                                navigateBack(if (returnToPdf) LightningScreen.PDF_VIEWER else LightningScreen.BROWSER)
+                            },
+                            onSavePdf = { mediaSize, mono, pages ->
+                                val file = printPdfFile
+                                if (file != null) {
+                                    PdfPrint.exportPdfToDownloads(
+                                        context = context,
+                                        scope = coroutineScope,
+                                        pdfFile = file,
+                                        title = pdfTitle.ifBlank { "document" },
+                                        domain = pdfDomain,
+                                        mediaSize = mediaSize,
+                                        monochrome = mono,
+                                        selectedPages = pages,
+                                    ) { savedName ->
+                                        if (savedName != null && incognito) {
+                                            privateDownloadedFiles.add(savedName)
+                                            BrowserStore.addPrivateDownload(
+                                                context,
+                                                tabs.getOrNull(activeIndex)?.id.orEmpty(),
+                                                savedName,
+                                                BrowserStore.effectiveDownloadRelativePath(context),
+                                            )
+                                        }
+                                        val message = if (savedName != null) {
+                                            context.getString(R.string.menu_save_offline_saved, savedName)
+                                        } else {
+                                            context.getString(R.string.menu_save_offline_failed)
+                                        }
+                                        showBanner(message)
+                                    }
+                                } else {
+                                    savePageAsPdf(mediaSize, mono, pages)
+                                }
+                            },
+                            onPrint = { attrs, pages ->
+                                val file = printPdfFile
+                                if (file != null) {
+                                    val pm = context.getSystemService(Context.PRINT_SERVICE) as? PrintManager
+                                    if (pm != null) {
+                                        val jobName = pdfTitle.ifBlank { context.getString(R.string.app_name) }
+                                        pm.print(jobName, PdfFilePrintAdapter(file, jobName, pages), attrs)
+                                    }
+                                } else {
+                                    printCurrentPage(attrs)
+                                }
+                            },
+                        )
+                    }
                     LightningScreen.PDF_VIEWER -> PdfViewerScreen(
                         title = pdfTitle,
+                        sourceUrl = pdfUrl,
                         pdfFile = pdfFile,
                         isLoading = pdfLoading,
                         loadError = pdfError,
+                        initialPage = pdfInitialPage,
+                        nightMode = pdfNightMode,
+                        onToggleNightMode = {
+                            val next = !pdfNightMode
+                            pdfNightMode = next
+                            BrowserStore.savePdfNightMode(context, next)
+                        },
+                        onDocumentLoaded = { count ->
+                            pdfPageCount = count
+                        },
+                        onPageChanged = { page ->
+                            pdfCurrentPage = page
+                            if (!incognito) {
+                                val key = BrowserStore.pdfPositionKey(pdfUrl, pdfTitle)
+                                BrowserStore.savePdfPosition(context, key, page)
+                            }
+                        },
                         onSaveToDownloads = {
                             val file = pdfFile ?: return@PdfViewerScreen
                             val name = pdfTitle.ifBlank { "document.pdf" }
@@ -1377,6 +1492,24 @@ fun LightningBrowserRoot(
                                 showBanner(msg)
                             }
                         },
+                        onShare = {
+                            val file = pdfFile ?: return@PdfViewerScreen
+                            runCatching {
+                                val uri = androidx.core.content.FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    file,
+                                )
+                                val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/pdf"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(sendIntent, context.getString(R.string.pdf_viewer_share)))
+                            }.onFailure {
+                                showBanner(R.string.dl_no_external_apps)
+                            }
+                        },
                         onOpenExternal = {
                             val file = pdfFile ?: return@PdfViewerScreen
                             val pref = contentPreferences["pdf"]
@@ -1388,9 +1521,19 @@ fun LightningBrowserRoot(
                                 pref?.className,
                             )
                         },
+                        onPrint = {
+                            val file = pdfFile ?: return@PdfViewerScreen
+                            openPdfPrintSheet(file)
+                        },
+                        onRetry = {
+                            val url = pdfUrl ?: return@PdfViewerScreen
+                            startPdfDownload(url, pdfUserAgent, pdfTitle, resetPage = false)
+                        },
                         onBack = {
                             pdfFile?.let { runCatching { it.delete() } }
                             pdfFile = null
+                            pdfUrl = null
+                            pdfUserAgent = null
                             navigateBack(LightningScreen.BROWSER)
                         },
                     )
