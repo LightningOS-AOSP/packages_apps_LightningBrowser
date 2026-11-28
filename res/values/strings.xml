@@ -88,6 +88,8 @@
     <string name="back">Back</string>
 
     <string name="settings_title">Settings</string>
+    <string name="settings_search_hint">Search settings</string>
+    <string name="settings_search_empty">No matching settings</string>
     <string name="settings_startup">On startup</string>
     <string name="startup_title">On startup</string>
     <string name="startup_subtitle">Choose what to display when opening the browser</string>
