@@ -22,6 +22,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.annotation.Keep
 import org.json.JSONObject
 import androidx.activity.compose.BackHandler
@@ -38,6 +39,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -253,7 +255,7 @@ fun BrowserScreen(
     readingTimeEnabled: Boolean = false,
     clipboardPromptEnabled: Boolean = true,
     waybackEnabled: Boolean = true,
-    onDownloadSaved: (String) -> Unit = {},
+    onDownloadSaved: (fileName: String, relativePath: String) -> Unit = { _, _ -> },
     onOpenPdf: (url: String, userAgent: String?, title: String) -> Unit = { _, _, _ -> },
     onBackHome: () -> Unit,
     modifier: Modifier = Modifier,
@@ -343,20 +345,22 @@ fun BrowserScreen(
         contentDisposition: String?,
         mimeType: String?,
         overrideFileName: String? = null,
+        overrideRelativePath: String? = null,
     ) {
         val fileName = overrideFileName?.takeIf { it.isNotBlank() }
             ?: BrowserDownloads.fileNameFrom(contentDisposition, url, mimeType)
-        if (BrowserDownloads.downloadExists(context, fileName)) {
-            val suggested = BrowserDownloads.nextAvailableName(context, fileName)
+        val relPath = overrideRelativePath ?: BrowserStore.effectiveDownloadRelativePath(context)
+        if (BrowserDownloads.downloadExists(context, fileName, relPath)) {
+            val suggested = BrowserDownloads.nextAvailableName(context, fileName, relPath)
             duplicateDownload = if (url.startsWith("data:", ignoreCase = true)) {
-                DuplicateDownloadPrompt.DataUri(url, fileName, suggested, mimeType)
+                DuplicateDownloadPrompt.DataUri(url, fileName, suggested, mimeType, relPath)
             } else {
-                DuplicateDownloadPrompt.Http(url, userAgent, fileName, suggested, mimeType)
+                DuplicateDownloadPrompt.Http(url, userAgent, fileName, suggested, mimeType, relPath)
             }
         } else {
-            val started = BrowserDownloads.enqueueWithFileName(context, url, userAgent, fileName, mimeType)
+            val started = BrowserDownloads.enqueueWithFileName(context, url, userAgent, fileName, mimeType, relPath)
             if (started) {
-                onDownloadSaved(fileName)
+                onDownloadSaved(fileName, relPath)
                 if (url.startsWith("data:", ignoreCase = true)) {
                     showDownloadFinished(fileName)
                 } else {
@@ -376,9 +380,16 @@ fun BrowserScreen(
         }
     }
 
-    fun proceedDownload(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?, overrideFileName: String? = null) {
+    fun proceedDownload(
+        url: String,
+        userAgent: String?,
+        contentDisposition: String?,
+        mimeType: String?,
+        overrideFileName: String? = null,
+        overrideRelativePath: String? = null,
+    ) {
         if (url.startsWith("data:", ignoreCase = true)) {
-            enqueueChecked(url, userAgent, contentDisposition, mimeType, overrideFileName)
+            enqueueChecked(url, userAgent, contentDisposition, mimeType, overrideFileName, overrideRelativePath)
             return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -387,7 +398,7 @@ fun BrowserScreen(
             pendingDownload = PendingDownload(url, userAgent, contentDisposition, mimeType)
             notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            enqueueChecked(url, userAgent, contentDisposition, mimeType, overrideFileName)
+            enqueueChecked(url, userAgent, contentDisposition, mimeType, overrideFileName, overrideRelativePath)
         }
     }
 
@@ -867,8 +878,10 @@ fun BrowserScreen(
                                 prompt.userAgent,
                                 prompt.suggestedName,
                                 prompt.mimeType,
+                                prompt.relativePath,
                             )
                         ) {
+                            onDownloadSaved(prompt.suggestedName, prompt.relativePath)
                             showDownloadStarted(prompt.suggestedName)
                         }
                     }
@@ -878,8 +891,10 @@ fun BrowserScreen(
                                 prompt.dataUri,
                                 prompt.suggestedName,
                                 prompt.mimeType,
+                                prompt.relativePath,
                             )
                         ) {
+                            onDownloadSaved(prompt.suggestedName, prompt.relativePath)
                             showDownloadFinished(prompt.suggestedName)
                         }
                     }
@@ -889,8 +904,10 @@ fun BrowserScreen(
                                 prompt.suggestedName,
                                 prompt.mimeType,
                                 prompt.tempFile,
+                                prompt.relativePath,
                             )
                         ) {
+                            onDownloadSaved(prompt.suggestedName, prompt.relativePath)
                             showDownloadFinished(prompt.suggestedName)
                         }
                     }
@@ -906,18 +923,29 @@ fun BrowserScreen(
             BrowserDownloads.fileNameFrom(pending.contentDisposition, pending.url, pending.mimeType)
         }
         var draftName by remember(pending) { mutableStateOf(initialName) }
-        val folder = remember { BrowserStore.loadDownloadFolder(context) }
+        var selectedRelativePath by remember(pending) {
+            mutableStateOf(BrowserStore.effectiveDownloadRelativePath(context))
+        }
+        val promptFolderPicker = rememberLauncherForActivityResult(
+            ActivityResultContracts.OpenDocumentTree(),
+        ) { uri ->
+            if (uri != null) {
+                val rel = BrowserDownloads.extractAllowedRelativePath(uri)
+                if (rel != null) {
+                    selectedRelativePath = rel
+                } else {
+                    Toast.makeText(context, R.string.dl_folder_invalid, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+        val quickPaths = remember {
+            listOf("Download", "Download/Lightning", "Documents", "Music", "Movies", "Pictures")
+        }
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { downloadConfirmPrompt = null },
             title = { Text(stringResource(R.string.dl_prompt_title), color = colors.onSurface) },
             text = {
                 Column {
-                    Text(
-                        text = "${stringResource(R.string.dl_save_to_title)}: ${stringResource(folder.labelRes)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(10.dp))
                     TextField(
                         value = draftName,
                         onValueChange = { draftName = it },
@@ -925,6 +953,52 @@ fun BrowserScreen(
                         label = { Text(stringResource(R.string.dl_prompt_filename)) },
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.dl_save_to_title),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = colors.onSurfaceVariant,
+                            )
+                            Text(
+                                text = selectedRelativePath,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        TextButton(onClick = { promptFolderPicker.launch(null) }) {
+                            Text(stringResource(R.string.dl_folder_browse), color = colors.primary)
+                        }
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                    ) {
+                        quickPaths.forEach { path ->
+                            val isSelected = selectedRelativePath.equals(path, ignoreCase = true)
+                            Surface(
+                                onClick = { selectedRelativePath = path },
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isSelected) colors.primaryContainer else colors.surfaceContainerHigh,
+                            ) {
+                                Text(
+                                    text = path,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (isSelected) colors.onPrimaryContainer else colors.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                )
+                            }
+                        }
+                    }
                 }
             },
             dismissButton = {
@@ -965,6 +1039,7 @@ fun BrowserScreen(
                             pending.contentDisposition,
                             pending.mimeType,
                             finalName,
+                            selectedRelativePath,
                         )
                     }) {
                         Text(stringResource(R.string.dl_prompt_save), color = colors.primary)
@@ -2667,6 +2742,7 @@ private data class PendingDownload(
 private sealed class DuplicateDownloadPrompt(
     val existingName: String,
     val suggestedName: String,
+    val relativePath: String = "Download",
 ) {
     class Http(
         val url: String,
@@ -2674,21 +2750,24 @@ private sealed class DuplicateDownloadPrompt(
         existingName: String,
         suggestedName: String,
         val mimeType: String?,
-    ) : DuplicateDownloadPrompt(existingName, suggestedName)
+        relativePath: String = "Download",
+    ) : DuplicateDownloadPrompt(existingName, suggestedName, relativePath)
 
     class DataUri(
         val dataUri: String,
         existingName: String,
         suggestedName: String,
         val mimeType: String?,
-    ) : DuplicateDownloadPrompt(existingName, suggestedName)
+        relativePath: String = "Download",
+    ) : DuplicateDownloadPrompt(existingName, suggestedName, relativePath)
 
     class BlobTemp(
         existingName: String,
         suggestedName: String,
         val mimeType: String,
         val tempFile: File,
-    ) : DuplicateDownloadPrompt(existingName, suggestedName)
+        relativePath: String = "Download",
+    ) : DuplicateDownloadPrompt(existingName, suggestedName, relativePath)
 }
 
 private fun findKeywordMatch(

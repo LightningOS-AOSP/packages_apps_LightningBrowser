@@ -1,5 +1,8 @@
 package com.lightning.browser.ui.settings
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
@@ -60,6 +63,7 @@ import com.lightning.browser.R
 import com.lightning.browser.ui.BrowserStore
 import com.lightning.browser.ui.browser.AppHandler
 import com.lightning.browser.ui.browser.AppHandlerResolver
+import com.lightning.browser.ui.browser.BrowserDownloads
 import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.theme.EyebrowTextStyle
@@ -71,11 +75,13 @@ import com.lightning.browser.ui.theme.rememberLightningHaptics
 @Composable
 fun DownloadSettingsScreen(
     saveFolder: BrowserStore.DownloadFolder,
+    customDownloadPath: String = "Download",
     askBeforeDownload: Boolean,
     deletePrivateOnClose: Boolean,
     otherFilesAsk: Boolean,
     contentPreferences: Map<String, BrowserStore.ContentPreference>,
     onSaveFolderChange: (BrowserStore.DownloadFolder) -> Unit,
+    onCustomDownloadPathChange: (String) -> Unit = {},
     onAskBeforeDownloadChange: (Boolean) -> Unit,
     onDeletePrivateOnCloseChange: (Boolean) -> Unit,
     onOtherFilesAskChange: (Boolean) -> Unit,
@@ -87,6 +93,21 @@ fun DownloadSettingsScreen(
     val context = LocalContext.current
     var pickingFolder by remember { mutableStateOf(false) }
     var editingRule by remember { mutableStateOf<BrowserStore.ContentTypeRule?>(null) }
+
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            val rel = BrowserDownloads.extractAllowedRelativePath(uri)
+            if (rel != null) {
+                onCustomDownloadPathChange(rel)
+                onSaveFolderChange(BrowserStore.DownloadFolder.CUSTOM)
+                pickingFolder = false
+            } else {
+                Toast.makeText(context, R.string.dl_folder_invalid, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     val rules = BrowserStore.defaultContentTypeRules
     val systemDefaults = remember(rules) {
@@ -108,7 +129,11 @@ fun DownloadSettingsScreen(
                 0 -> SettingsRow(
                     icon = Icons.Filled.FolderOpen,
                     title = stringResource(R.string.dl_save_to_title),
-                    summary = stringResource(saveFolder.labelRes),
+                    summary = if (saveFolder == BrowserStore.DownloadFolder.CUSTOM) {
+                        customDownloadPath
+                    } else {
+                        stringResource(saveFolder.labelRes)
+                    },
                     onClick = { pickingFolder = true },
                     shape = shape,
                     index = i,
@@ -195,31 +220,75 @@ fun DownloadSettingsScreen(
     }
 
     if (pickingFolder) {
-        AlertDialog(
+        val folderSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
             onDismissRequest = { pickingFolder = false },
-            title = { Text(stringResource(R.string.dl_save_to_title), color = colors.onSurface) },
-            text = {
+            sheetState = folderSheetState,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            containerColor = colors.surfaceContainerLow,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 24.dp)
+                    .navigationBarsPadding(),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    ShapedIcon(
+                        icon = Icons.Filled.FolderOpen,
+                        shape = ExpressiveShapes.Cookie9,
+                        container = colors.primaryContainer,
+                        content = colors.onPrimaryContainer,
+                        size = 44.dp,
+                        iconSize = 22.dp,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = stringResource(R.string.dl_save_to_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = { pickingFolder = false }) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = stringResource(R.string.dns_custom_cancel),
+                            tint = colors.onSurfaceVariant,
+                        )
+                    }
+                }
+                Spacer(Modifier.height(16.dp))
                 GroupedColumn(BrowserStore.DownloadFolder.entries.size) { i, shape ->
                     val folder = BrowserStore.DownloadFolder.entries[i]
+                    val summary = if (folder == BrowserStore.DownloadFolder.CUSTOM) {
+                        if (saveFolder == BrowserStore.DownloadFolder.CUSTOM) customDownloadPath
+                        else stringResource(R.string.dl_folder_browse)
+                    } else {
+                        folder.relativePath
+                    }
                     SettingsRadioRow(
                         title = stringResource(folder.labelRes),
-                        summary = folder.relativePath,
+                        summary = summary,
                         selected = folder == saveFolder,
                         onClick = {
-                            onSaveFolderChange(folder)
-                            pickingFolder = false
+                            if (folder == BrowserStore.DownloadFolder.CUSTOM) {
+                                folderPickerLauncher.launch(null)
+                            } else {
+                                onSaveFolderChange(folder)
+                                pickingFolder = false
+                            }
                         },
                         shape = shape,
                     )
                 }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = { pickingFolder = false }) {
-                    Text(stringResource(R.string.dns_custom_cancel), color = colors.primary)
-                }
-            },
-        )
+            }
+        }
     }
 
     editingRule?.let { rule ->

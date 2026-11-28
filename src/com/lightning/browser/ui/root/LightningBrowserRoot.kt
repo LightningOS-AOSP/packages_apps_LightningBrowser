@@ -328,6 +328,7 @@ fun LightningBrowserRoot(
     var duplicateTabWarningEnabled by remember { mutableStateOf(BrowserStore.loadDuplicateTabWarningEnabled(context)) }
     var recentlyClosedEnabled by remember { mutableStateOf(BrowserStore.loadRecentlyClosedEnabled(context)) }
     var downloadFolder by remember { mutableStateOf(BrowserStore.loadDownloadFolder(context)) }
+    var customDownloadPath by remember { mutableStateOf(BrowserStore.loadCustomDownloadPath(context)) }
     var askBeforeDownload by remember { mutableStateOf(BrowserStore.loadDownloadAskBefore(context)) }
     var deletePrivateDownloads by remember { mutableStateOf(BrowserStore.loadDeletePrivateDownloads(context)) }
     var otherFilesAsk by remember { mutableStateOf(BrowserStore.loadDownloadOtherAsk(context)) }
@@ -496,6 +497,9 @@ fun LightningBrowserRoot(
     LaunchedEffect(downloadFolder) {
         if (!incognito) BrowserStore.saveDownloadFolder(context, downloadFolder)
     }
+    LaunchedEffect(customDownloadPath) {
+        if (!incognito) BrowserStore.saveCustomDownloadPath(context, customDownloadPath)
+    }
     LaunchedEffect(askBeforeDownload) {
         if (!incognito) BrowserStore.saveDownloadAskBefore(context, askBeforeDownload)
     }
@@ -507,9 +511,9 @@ fun LightningBrowserRoot(
     }
     DisposableEffect(incognito) {
         onDispose {
-            if (incognito && deletePrivateDownloads && privateDownloadedFiles.isNotEmpty()) {
-                privateDownloadedFiles.forEach { fileName ->
-                    BrowserDownloads.deleteByFileName(context, fileName)
+            if (incognito && deletePrivateDownloads) {
+                BrowserStore.popAllPrivateDownloads(context).forEach { rec ->
+                    BrowserDownloads.deleteByFileName(context, rec.fileName, rec.relativePath)
                 }
                 privateDownloadedFiles.clear()
             }
@@ -862,9 +866,18 @@ fun LightningBrowserRoot(
         }
     }
 
+    fun cleanupPrivateTabDownloads(tabId: String) {
+        if (incognito && deletePrivateDownloads) {
+            BrowserStore.removePrivateDownloadsForTab(context, tabId).forEach { rec ->
+                BrowserDownloads.deleteByFileName(context, rec.fileName, rec.relativePath)
+            }
+        }
+    }
+
     fun removeTabAt(index: Int) {
         if (index !in tabs.indices) return
         val removed = tabs.removeAt(index)
+        cleanupPrivateTabDownloads(removed.id)
         tabThumbnails.remove(removed.id)
         if (!incognito && !removed.private) {
             BrowserStore.deleteTabThumbnail(context, removed.id)
@@ -978,6 +991,14 @@ fun LightningBrowserRoot(
 
     BackHandler(enabled = showQuickArc) {
         showQuickArc = false
+    }
+
+    BackHandler(enabled = incognito && !showQuickArc && screen == LightningScreen.HOME) {
+        val intent = Intent(context, com.lightning.browser.MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+        }
+        runCatching { context.startActivity(intent) }
+        (context as? android.app.Activity)?.finish()
     }
 
     BackHandler(enabled = !showQuickArc && screen != LightningScreen.HOME) {
@@ -1151,9 +1172,15 @@ fun LightningBrowserRoot(
                         readingTimeEnabled = readingTimeEnabled,
                         clipboardPromptEnabled = clipboardPromptEnabled,
                         waybackEnabled = waybackEnabled,
-                        onDownloadSaved = { name ->
+                        onDownloadSaved = { name, relPath ->
                             if (incognito && name.isNotBlank()) {
                                 privateDownloadedFiles.add(name)
+                                BrowserStore.addPrivateDownload(
+                                    context,
+                                    tabs.getOrNull(activeIndex)?.id.orEmpty(),
+                                    name,
+                                    relPath,
+                                )
                             }
                         },
                         onOpenPdf = { url, userAgent, title ->
@@ -1225,6 +1252,7 @@ fun LightningBrowserRoot(
                         onCloseTab = { index ->
                             if (index in tabs.indices) {
                                 val removed = tabs.removeAt(index)
+                                cleanupPrivateTabDownloads(removed.id)
                                 recordClosedTab(removed)
                                 tabThumbnails.remove(removed.id)
                                 if (!incognito && !removed.private) {
@@ -1247,6 +1275,12 @@ fun LightningBrowserRoot(
                             }
                         },
                         onCloseAll = {
+                            if (incognito && deletePrivateDownloads) {
+                                BrowserStore.popAllPrivateDownloads(context).forEach { rec ->
+                                    BrowserDownloads.deleteByFileName(context, rec.fileName, rec.relativePath)
+                                }
+                                privateDownloadedFiles.clear()
+                            }
                             tabs.forEach { recordClosedTab(it) }
                             tabs.clear()
                             tabThumbnails.clear()
@@ -1312,8 +1346,17 @@ fun LightningBrowserRoot(
                         onSaveToDownloads = {
                             val file = pdfFile ?: return@PdfViewerScreen
                             val name = pdfTitle.ifBlank { "document.pdf" }
-                            BrowserDownloads.saveCachedFileToDownloads(context, name, "application/pdf", file) { ok ->
-                                if (ok && incognito) privateDownloadedFiles.add(name)
+                            val relPath = BrowserStore.effectiveDownloadRelativePath(context)
+                            BrowserDownloads.saveCachedFileToDownloads(context, name, "application/pdf", file, relPath) { ok ->
+                                if (ok && incognito) {
+                                    privateDownloadedFiles.add(name)
+                                    BrowserStore.addPrivateDownload(
+                                        context,
+                                        tabs.getOrNull(activeIndex)?.id.orEmpty(),
+                                        name,
+                                        relPath,
+                                    )
+                                }
                                 val msg = if (ok) {
                                     context.getString(R.string.pdf_viewer_saved, name)
                                 } else {
@@ -1413,11 +1456,13 @@ fun LightningBrowserRoot(
                     )
                     LightningScreen.DOWNLOAD_SETTINGS -> DownloadSettingsScreen(
                         saveFolder = downloadFolder,
+                        customDownloadPath = customDownloadPath,
                         askBeforeDownload = askBeforeDownload,
                         deletePrivateOnClose = deletePrivateDownloads,
                         otherFilesAsk = otherFilesAsk,
                         contentPreferences = contentPreferences,
                         onSaveFolderChange = { downloadFolder = it },
+                        onCustomDownloadPathChange = { customDownloadPath = it },
                         onAskBeforeDownloadChange = { askBeforeDownload = it },
                         onDeletePrivateOnCloseChange = { deletePrivateDownloads = it },
                         onOtherFilesAskChange = { otherFilesAsk = it },

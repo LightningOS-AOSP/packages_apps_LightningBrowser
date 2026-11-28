@@ -13,6 +13,7 @@ data class DownloadItem(
     val progress: Float,
     val timestamp: Long = 0L,
     val downloadId: Long = -1L,
+    val relativePath: String = "Download",
 )
 
 data class DownloadGroup(

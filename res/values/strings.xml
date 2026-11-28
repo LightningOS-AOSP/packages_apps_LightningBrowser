@@ -308,6 +308,12 @@
     <string name="dl_folder_downloads">Downloads</string>
     <string name="dl_folder_downloads_lightning">Downloads/Lightning</string>
     <string name="dl_folder_documents">Documents</string>
+    <string name="dl_folder_music">Music</string>
+    <string name="dl_folder_movies">Movies</string>
+    <string name="dl_folder_pictures">Pictures</string>
+    <string name="dl_folder_custom">Custom folder</string>
+    <string name="dl_folder_browse">Choose folder…</string>
+    <string name="dl_folder_invalid">Only standard folders (Download, Documents, Music, Movies, Pictures) are allowed</string>
     <string name="dl_ask_before">Ask where to save files before downloading</string>
     <string name="dl_ask_before_summary">Prompt for file name and location before saving</string>
     <string name="dl_delete_private">Delete private window downloads on close</string>

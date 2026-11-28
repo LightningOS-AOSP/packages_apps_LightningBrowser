@@ -54,8 +54,10 @@ object BrowserStore {
     private const val KEY_DUPLICATE_TAB_WARNING = "duplicate_tab_warning"
     private const val KEY_RECENTLY_CLOSED_ENABLED = "recently_closed_enabled"
     private const val KEY_DL_SAVE_FOLDER = "dl_save_folder"
+    private const val KEY_DL_CUSTOM_PATH = "dl_custom_path"
     private const val KEY_DL_ASK_BEFORE = "dl_ask_before"
     private const val KEY_DL_DELETE_PRIVATE = "dl_delete_private"
+    private const val KEY_PRIVATE_DOWNLOADS = "pending_private_downloads"
     private const val KEY_DL_OTHER_ASK = "dl_other_ask"
     private const val KEY_DL_CONTENT_ACTIONS = "dl_content_actions"
     private const val KEY_DISMISSED_CLIP_TIMESTAMP = "dismissed_clip_timestamp"
@@ -350,7 +352,28 @@ object BrowserStore {
         DOWNLOADS(com.lightning.browser.R.string.dl_folder_downloads, "Download"),
         DOWNLOADS_LIGHTNING(com.lightning.browser.R.string.dl_folder_downloads_lightning, "Download/Lightning"),
         DOCUMENTS(com.lightning.browser.R.string.dl_folder_documents, "Documents"),
+        MUSIC(com.lightning.browser.R.string.dl_folder_music, "Music"),
+        MOVIES(com.lightning.browser.R.string.dl_folder_movies, "Movies"),
+        PICTURES(com.lightning.browser.R.string.dl_folder_pictures, "Pictures"),
+        CUSTOM(com.lightning.browser.R.string.dl_folder_custom, "Download"),
     }
+
+    val ALLOWED_USER_DIR_ROOTS = listOf(
+        "Download",
+        "Documents",
+        "Music",
+        "Movies",
+        "Pictures",
+        "DCIM",
+        "Podcasts",
+        "Audiobooks",
+    )
+
+    data class PrivateDownloadRecord(
+        val tabId: String,
+        val fileName: String,
+        val relativePath: String,
+    )
 
     enum class ContentAction(val labelRes: Int) {
         ALWAYS_ASK(com.lightning.browser.R.string.dl_action_always_ask),
@@ -432,6 +455,95 @@ object BrowserStore {
 
     fun saveDownloadFolder(context: Context, folder: DownloadFolder) {
         prefs(context).edit().putString(KEY_DL_SAVE_FOLDER, folder.name).apply()
+    }
+
+    fun loadCustomDownloadPath(context: Context): String =
+        prefs(context).getString(KEY_DL_CUSTOM_PATH, null)?.takeIf { isAllowedUserRelativePath(it) }
+            ?: "Download"
+
+    fun saveCustomDownloadPath(context: Context, relativePath: String) {
+        if (isAllowedUserRelativePath(relativePath)) {
+            prefs(context).edit().putString(KEY_DL_CUSTOM_PATH, relativePath.trim('/')).apply()
+        }
+    }
+
+    fun effectiveDownloadRelativePath(context: Context): String {
+        val folder = loadDownloadFolder(context)
+        return if (folder == DownloadFolder.CUSTOM) loadCustomDownloadPath(context) else folder.relativePath
+    }
+
+    fun isAllowedUserRelativePath(path: String): Boolean {
+        val clean = path.trim().trim('/')
+        if (clean.isEmpty() || clean.contains("..")) return false
+        return ALLOWED_USER_DIR_ROOTS.any { root ->
+            clean.equals(root, ignoreCase = true) || clean.startsWith("$root/", ignoreCase = true)
+        }
+    }
+
+    private fun privateDownloadsFile(context: Context): File =
+        File(context.applicationContext.filesDir, "private_downloads.json")
+
+    fun addPrivateDownload(context: Context, tabId: String, fileName: String, relativePath: String) {
+        if (fileName.isBlank()) return
+        val existing = loadPrivateDownloads(context).toMutableList()
+        if (existing.none { it.tabId == tabId && it.fileName == fileName && it.relativePath == relativePath }) {
+            existing.add(PrivateDownloadRecord(tabId, fileName, relativePath))
+            savePrivateDownloads(context, existing)
+        }
+    }
+
+    fun loadPrivateDownloads(context: Context): List<PrivateDownloadRecord> {
+        val file = privateDownloadsFile(context)
+        if (!file.exists()) return emptyList()
+        val raw = runCatching { file.readText() }.getOrNull() ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    add(
+                        PrivateDownloadRecord(
+                            tabId = obj.optString("tabId", ""),
+                            fileName = obj.getString("fileName"),
+                            relativePath = obj.optString("relativePath", "Download"),
+                        ),
+                    )
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun removePrivateDownloadsForTab(context: Context, tabId: String): List<PrivateDownloadRecord> {
+        val all = loadPrivateDownloads(context)
+        val removed = all.filter { it.tabId == tabId }
+        if (removed.isNotEmpty()) {
+            savePrivateDownloads(context, all.filterNot { it.tabId == tabId })
+        }
+        return removed
+    }
+
+    fun popAllPrivateDownloads(context: Context): List<PrivateDownloadRecord> {
+        val all = loadPrivateDownloads(context)
+        runCatching { privateDownloadsFile(context).delete() }
+        return all
+    }
+
+    private fun savePrivateDownloads(context: Context, list: List<PrivateDownloadRecord>) {
+        val file = privateDownloadsFile(context)
+        if (list.isEmpty()) {
+            runCatching { file.delete() }
+            return
+        }
+        val array = JSONArray()
+        list.forEach { rec ->
+            array.put(
+                JSONObject()
+                    .put("tabId", rec.tabId)
+                    .put("fileName", rec.fileName)
+                    .put("relativePath", rec.relativePath),
+            )
+        }
+        runCatching { file.writeText(array.toString()) }
     }
 
     fun loadDownloadAskBefore(context: Context): Boolean =
@@ -619,6 +731,7 @@ object BrowserStore {
         val domain: String,
         val sizeBytes: Long,
         val timestamp: Long,
+        val relativePath: String = "Download",
     )
 
     fun loadDownloads(context: Context): List<DownloadRecord> {
@@ -633,6 +746,7 @@ object BrowserStore {
                         domain = entry.optString("domain", ""),
                         sizeBytes = entry.optLong("sizeBytes", 0L),
                         timestamp = entry.optLong("timestamp", 0L),
+                        relativePath = entry.optString("relativePath", "Download"),
                     ))
                 }
             }
@@ -648,7 +762,8 @@ object BrowserStore {
                 .put("title", item.title)
                 .put("domain", item.domain)
                 .put("sizeBytes", item.sizeBytes)
-                .put("timestamp", item.timestamp))
+                .put("timestamp", item.timestamp)
+                .put("relativePath", item.relativePath))
         }
         prefs(context).edit().putString(KEY_DOWNLOADS, array.toString()).apply()
     }
@@ -661,7 +776,8 @@ object BrowserStore {
                 .put("title", item.title)
                 .put("domain", item.domain)
                 .put("sizeBytes", item.sizeBytes)
-                .put("timestamp", item.timestamp))
+                .put("timestamp", item.timestamp)
+                .put("relativePath", item.relativePath))
         }
         prefs(context).edit().putString(KEY_DOWNLOADS, array.toString()).apply()
     }
