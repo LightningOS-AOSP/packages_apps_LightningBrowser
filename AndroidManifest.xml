@@ -74,10 +74,14 @@
             android:name=".IncognitoActivity"
             android:exported="false"
             android:process=":incognito"
-            android:taskAffinity="com.lightning.browser.incognito"
-            android:launchMode="singleTask"
-            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize|uiMode" />
+
+        <service
+            android:name=".IncognitoCleanupService"
+            android:exported="false"
+            android:process=":incognito"
+            android:stopWithTask="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
