@@ -2193,6 +2193,19 @@ private fun BrowserPage(
                             }
                             return true
                         }
+                        if (target.scheme.equals("intent", ignoreCase = true)) {
+                            return handleIntentUri(context, view, target.toString())
+                        }
+                        val lowerScheme = target.scheme.orEmpty().lowercase()
+                        if (lowerScheme in setOf("tel", "sms", "smsto", "geo", "market")) {
+                            runCatching {
+                                val viewIntent = Intent(Intent.ACTION_VIEW, target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                if (context.packageManager.resolveActivity(viewIntent, 0) != null) {
+                                    context.startActivity(viewIntent)
+                                }
+                            }
+                            return true
+                        }
                         if (request.isForMainFrame && (target.scheme.equals("http", true) || target.scheme.equals("https", true))) {
                             val lastSeg = target.lastPathSegment.orEmpty()
                             val ext = lastSeg.substringAfterLast('.', "").lowercase()
@@ -3300,4 +3313,33 @@ private fun displayAddress(url: String, domain: String): String {
     return url.substringAfter("://")
         .removePrefix("www.")
         .trimEnd('/')
+}
+
+private fun handleIntentUri(context: Context, view: WebView?, uriString: String): Boolean {
+    val intent = runCatching { Intent.parseUri(uriString, Intent.URI_INTENT_SCHEME) }.getOrNull()
+        ?: return false
+    intent.addCategory(Intent.CATEGORY_BROWSABLE)
+    intent.selector = null
+    if (intent.`package` == context.packageName && intent.component != null) {
+        intent.component = null
+    }
+    val launched = runCatching {
+        val resolved = context.packageManager.resolveActivity(intent, 0)
+        if (resolved != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            true
+        } else {
+            false
+        }
+    }.getOrDefault(false)
+    if (launched) return true
+
+    val fallbackUrl = intent.getStringExtra("browser_fallback_url")
+    if (!fallbackUrl.isNullOrBlank() &&
+        (fallbackUrl.startsWith("http://", true) || fallbackUrl.startsWith("https://", true))
+    ) {
+        view?.post { view.loadUrl(fallbackUrl) }
+    }
+    return true
 }
