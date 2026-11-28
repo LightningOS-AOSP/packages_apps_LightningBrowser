@@ -58,6 +58,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FileDownload
@@ -129,11 +130,13 @@ import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.theme.rememberLightningHaptics
 import com.lightning.browser.ui.components.TonalIconButton
 import com.lightning.browser.ui.home.ChipTone
+import com.lightning.browser.ui.home.PinnedSite
 import com.lightning.browser.ui.home.RecentPage
 import com.lightning.browser.ui.root.DuplicateTabWarning
 import com.lightning.browser.ui.settings.Bookmark
 import com.lightning.browser.ui.settings.CustomSearchEngine
 import com.lightning.browser.ui.settings.DnsProvider
+import com.lightning.browser.ui.settings.HistoryEntry
 import com.lightning.browser.ui.settings.SearchEngine
 import com.lightning.browser.ui.settings.searchUrl
 import com.lightning.browser.ui.tabs.BrowserTab
@@ -317,7 +320,12 @@ fun BrowserScreen(
     barScrollBehavior: BrowserStore.BarScrollBehavior = BrowserStore.BarScrollBehavior.HIDE_BOTH,
     recentSearches: List<String> = emptyList(),
     recentPages: List<RecentPage> = emptyList(),
+    history: List<HistoryEntry> = emptyList(),
     bookmarks: List<Bookmark> = emptyList(),
+    pinnedSites: List<PinnedSite> = emptyList(),
+    incognito: Boolean = false,
+    suggestionSettings: BrowserStore.SearchSuggestionSettings = BrowserStore.SearchSuggestionSettings(),
+    onSwitchTab: (Int) -> Unit = {},
     onUpdateTab: (Int, BrowserTab) -> Unit,
     onRecordVisit: (String, String) -> Unit = { _, _ -> },
     onSearchSubmitted: (String) -> Unit = {},
@@ -363,6 +371,28 @@ fun BrowserScreen(
     var downloadPopup by remember { mutableStateOf<DownloadPopupState?>(null) }
     var waybackSnapshot by remember(activeIndex) { mutableStateOf<WaybackSnapshot?>(null) }
     var clipboardUrl by remember(activeIndex) { mutableStateOf<String?>(null) }
+    var liveSearchSuggestions by remember(activeIndex) { mutableStateOf<List<String>>(emptyList()) }
+    val isPrivateContext = incognito || (activeTab?.private == true)
+    val allowLiveSuggestions = isEditing &&
+        browserVisible &&
+        suggestionSettings.showSearchSuggestions &&
+        (!isPrivateContext || suggestionSettings.searchSuggestionsInPrivate)
+
+    LaunchedEffect(query, allowLiveSuggestions, searchEngine, activeCustomEngine) {
+        val trimmed = query.trim()
+        if (!allowLiveSuggestions || trimmed.isEmpty()) {
+            if (!suggestionSettings.showSearchSuggestions || (isPrivateContext && !suggestionSettings.searchSuggestionsInPrivate) || trimmed.isEmpty()) {
+                liveSearchSuggestions = emptyList()
+            }
+            return@LaunchedEffect
+        }
+        delay(160L)
+        liveSearchSuggestions = SearchSuggestionsClient.fetchSuggestions(
+            query = trimmed,
+            builtInEngine = searchEngine,
+            customEngine = activeCustomEngine,
+        )
+    }
     val dnsEndpoint = remember(dnsProvider, customDnsUrl) {
         DohResolver.endpointFor(dnsProvider, customDnsUrl)
     }
@@ -370,7 +400,6 @@ fun BrowserScreen(
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     LaunchedEffect(browserVisible) {
         if (!browserVisible) {
-            if (editing) editing = false
             focusManager.clearFocus()
         }
     }
@@ -636,7 +665,7 @@ fun BrowserScreen(
         UrlRow(
             address = displayAddress(activeTab?.url.orEmpty(), activeTab?.domain.orEmpty()),
             query = query,
-            editing = isEditing,
+            editing = isEditing && browserVisible,
             browserVisible = browserVisible,
             onQueryChange = { query = it },
             onEditStart = {
@@ -836,13 +865,23 @@ fun BrowserScreen(
                     }
                 }
             }
-            if (isEditing) {
+            if (isEditing && browserVisible) {
                 Suggestions(
                     query = query.trim(),
                     clipboardUrl = clipboardUrl,
                     recentSearches = recentSearches,
+                    liveSearchSuggestions = liveSearchSuggestions,
                     recentPages = recentPages,
+                    history = history,
                     bookmarks = bookmarks,
+                    pinnedSites = pinnedSites,
+                    tabs = tabs,
+                    activeIndex = activeIndex,
+                    activeEngine = searchEngine,
+                    activeCustomEngine = activeCustomEngine,
+                    customSearchEngines = customSearchEngines,
+                    suggestionSettings = suggestionSettings,
+                    isPrivateContext = isPrivateContext,
                     onOpenClipboardUrl = { url ->
                         onDismissClipSig(ClipboardUrlHelper.clipSignature(context))
                         onClearEditFromHome()
@@ -868,12 +907,28 @@ fun BrowserScreen(
                         editing = false
                         keyboard?.hide()
                     },
+                    onSearchWithUrl = { term, url ->
+                        if (tabs.isNotEmpty()) {
+                            onUpdateTab(activeIndex, tabs[activeIndex].copy(url = url, domain = hostOf(url)))
+                            onSearchSubmitted(term)
+                            onCheckDuplicateTab(url)
+                        }
+                        onClearEditFromHome()
+                        editing = false
+                        keyboard?.hide()
+                    },
                     onOpenSuggestion = { domain ->
                         if (tabs.isNotEmpty()) {
                             val url = "https://$domain"
                             onUpdateTab(activeIndex, tabs[activeIndex].copy(url = url, domain = domain))
                             onCheckDuplicateTab(url)
                         }
+                        onClearEditFromHome()
+                        editing = false
+                        keyboard?.hide()
+                    },
+                    onSwitchTab = { tabIndex ->
+                        onSwitchTab(tabIndex)
                         onClearEditFromHome()
                         editing = false
                         keyboard?.hide()
@@ -2697,45 +2752,192 @@ private fun Suggestions(
     query: String,
     clipboardUrl: String?,
     recentSearches: List<String>,
+    liveSearchSuggestions: List<String>,
     recentPages: List<RecentPage>,
+    history: List<HistoryEntry>,
     bookmarks: List<Bookmark>,
+    pinnedSites: List<PinnedSite>,
+    tabs: List<BrowserTab>,
+    activeIndex: Int,
+    activeEngine: SearchEngine,
+    activeCustomEngine: CustomSearchEngine?,
+    customSearchEngines: List<CustomSearchEngine>,
+    suggestionSettings: BrowserStore.SearchSuggestionSettings,
+    isPrivateContext: Boolean,
     onOpenClipboardUrl: (String) -> Unit,
     onFillClipboardUrl: (String) -> Unit,
     onDismissClipboardUrl: () -> Unit,
     onSearch: (String) -> Unit,
+    onSearchWithUrl: (String, String) -> Unit,
     onOpenSuggestion: (String) -> Unit,
+    onSwitchTab: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
-    val matches = { text: String -> text.contains(query, ignoreCase = true) }
-    val searches = if (query.isBlank()) recentSearches else recentSearches.filter(matches)
-    val sites = (recentPages.map { Suggestion(it.title, it.domain, it.icon, it.tone) } +
-        bookmarks.map { Suggestion(it.title, it.domain, it.icon, it.tone) })
-        .distinctBy { it.domain }
-        .filter { query.isBlank() || it.title.contains(query, ignoreCase = true) || it.domain.contains(query, ignoreCase = true) }
+    val matches = { text: String -> query.isBlank() || text.contains(query, ignoreCase = true) }
 
-    val entries = buildList {
-        if (query.isNotEmpty()) {
-            add(
+    val activeEngineLabel = activeCustomEngine?.name ?: stringResource(activeEngine.labelRes)
+    val recentSearchLabel = stringResource(R.string.suggestion_recent_search)
+
+    val directSearchEntry = if (query.isNotEmpty()) {
+        listOf(
+            Suggestion(
+                title = stringResource(R.string.browser_suggestion_search, query),
+                domain = activeEngineLabel,
+                icon = Icons.Filled.Search,
+                tone = ChipTone.PRIMARY,
+                action = SuggestionAction.Search(query),
+            ),
+        )
+    } else {
+        emptyList()
+    }
+
+    val recentSearchItems = if (suggestionSettings.suggestRecentSearches) {
+        recentSearches
+            .filter { matches(it) && !it.equals(query, ignoreCase = true) }
+            .take(5)
+            .map { term ->
                 Suggestion(
-                    title = stringResource(R.string.browser_suggestion_search, query),
-                    domain = "",
-                    icon = Icons.Filled.Search,
+                    title = term,
+                    domain = recentSearchLabel,
+                    icon = Icons.Filled.History,
                     tone = ChipTone.PRIMARY,
-                ),
-            )
-        }
-        searches.forEach { term ->
-            add(
+                    action = SuggestionAction.Search(term),
+                )
+            }
+    } else {
+        emptyList()
+    }
+
+    val liveSearchItems = if (
+        suggestionSettings.showSearchSuggestions &&
+        (!isPrivateContext || suggestionSettings.searchSuggestionsInPrivate) &&
+        query.isNotEmpty()
+    ) {
+        val seenTerms = recentSearchItems.map { it.title.lowercase() }.toSet()
+        liveSearchSuggestions
+            .filter { it.lowercase() !in seenTerms && !it.equals(query, ignoreCase = true) }
+            .map { term ->
                 Suggestion(
                     title = term,
                     domain = stringResource(R.string.browser_suggestion_search, term),
                     icon = Icons.Filled.Search,
                     tone = ChipTone.PRIMARY,
-                ),
+                    action = SuggestionAction.Search(term),
+                )
+            }
+    } else {
+        emptyList()
+    }
+
+    val openTabItems = if (suggestionSettings.suggestOpenTabs) {
+        tabs.mapIndexedNotNull { idx, tab ->
+            if (idx == activeIndex || tab.url.isBlank()) return@mapIndexedNotNull null
+            if (!matches(tab.title) && !matches(tab.domain) && !matches(tab.url)) return@mapIndexedNotNull null
+            Suggestion(
+                title = tab.title.ifBlank { tab.domain.ifBlank { tab.url } },
+                domain = stringResource(R.string.suggestion_switch_to_tab, tab.domain.ifBlank { tab.url }),
+                icon = Icons.Filled.Tab,
+                tone = ChipTone.SECONDARY,
+                action = SuggestionAction.SwitchTab(idx),
             )
         }
-        addAll(sites)
+    } else {
+        emptyList()
+    }
+
+    val bookmarkItems = if (suggestionSettings.suggestBookmarks) {
+        bookmarks
+            .filter { matches(it.title) || matches(it.domain) }
+            .map {
+                Suggestion(
+                    title = it.title,
+                    domain = stringResource(R.string.suggestion_bookmark, it.domain),
+                    icon = Icons.Filled.Bookmark,
+                    tone = it.tone,
+                    action = SuggestionAction.OpenDomain(it.domain),
+                )
+            }
+    } else {
+        emptyList()
+    }
+
+    val shortcutItems = if (suggestionSettings.suggestShortcuts) {
+        pinnedSites
+            .filter { matches(it.title) || matches(it.domain) }
+            .map {
+                Suggestion(
+                    title = it.title,
+                    domain = stringResource(R.string.suggestion_shortcut, it.domain),
+                    icon = it.icon,
+                    tone = it.tone,
+                    action = SuggestionAction.OpenDomain(it.domain),
+                )
+            }
+    } else {
+        emptyList()
+    }
+
+    val historyItems = if (suggestionSettings.suggestHistory) {
+        val rawHistory = if (history.isNotEmpty()) {
+            history.map { Triple(it.title, it.domain, it.icon to it.tone) }
+        } else {
+            recentPages.map { Triple(it.title, it.domain, it.icon to it.tone) }
+        }
+        rawHistory
+            .distinctBy { it.second }
+            .filter { (title, domain, _) -> matches(title) || matches(domain) }
+            .take(8)
+            .map { (title, domain, iconTone) ->
+                Suggestion(
+                    title = title,
+                    domain = domain,
+                    icon = iconTone.first,
+                    tone = iconTone.second,
+                    action = SuggestionAction.OpenDomain(domain),
+                )
+            }
+    } else {
+        emptyList()
+    }
+
+    val searchGroup = recentSearchItems + liveSearchItems
+    val localGroup = (openTabItems + bookmarkItems + shortcutItems + historyItems)
+        .distinctBy {
+            when (val act = it.action) {
+                is SuggestionAction.SwitchTab -> "tab:${act.tabIndex}"
+                is SuggestionAction.OpenDomain -> "domain:${act.domain}"
+                else -> it.title
+            }
+        }
+
+    val entries = buildList {
+        addAll(directSearchEntry)
+        if (suggestionSettings.searchSuggestionsBeforeHistory) {
+            addAll(searchGroup)
+            addAll(localGroup)
+        } else {
+            addAll(localGroup)
+            addAll(searchGroup)
+        }
+    }
+
+    val engineOptions: List<Pair<String, String>> = if (suggestionSettings.suggestSearchEngines && query.isNotEmpty()) {
+        buildList {
+            SearchEngine.entries.forEach { engine ->
+                if (activeCustomEngine != null || engine != activeEngine) {
+                    add(stringResource(engine.labelRes) to engine.searchUrl(query))
+                }
+            }
+            customSearchEngines.forEach { custom ->
+                if (custom.id != activeCustomEngine?.id) {
+                    add(custom.name to custom.searchUrl(query))
+                }
+            }
+        }
+    } else {
+        emptyList()
     }
 
     Column(
@@ -2744,9 +2946,9 @@ private fun Suggestions(
             .background(colors.surface)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp)
-            .padding(top = 4.dp),
+            .padding(top = 4.dp, bottom = 16.dp),
     ) {
-        if (clipboardUrl != null) {
+        if (clipboardUrl != null && suggestionSettings.suggestClipboard) {
             ClipboardUrlBanner(
                 url = clipboardUrl,
                 onOpen = { onOpenClipboardUrl(clipboardUrl) },
@@ -2755,24 +2957,66 @@ private fun Suggestions(
             )
             Spacer(Modifier.height(12.dp))
         }
-        GroupedColumn(entries.size) { index, shape ->
-            val entry = entries[index]
-            val isSearchAction = index == 0 && query.isNotEmpty()
-            SuggestionRow(
-                icon = entry.icon,
-                title = entry.title,
-                subtitle = entry.domain,
-                shape = shape,
-                index = index,
-                onClick = {
-                    when {
-                        isSearchAction -> onSearch(query)
-                        entry.domain.isEmpty() || index < searches.size + (if (query.isEmpty()) 0 else 1) ->
-                            onSearch(entry.title)
-                        else -> onOpenSuggestion(entry.domain)
-                    }
-                },
+        if (engineOptions.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.suggestion_search_engines_header),
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
             )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(bottom = 12.dp),
+            ) {
+                engineOptions.forEach { (label, url) ->
+                    Surface(
+                        onClick = { onSearchWithUrl(query, url) },
+                        color = colors.surfaceContainerHigh,
+                        shape = RoundedCornerShape(20.dp),
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Search,
+                                contentDescription = null,
+                                tint = colors.primary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = colors.onSurface,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (entries.isNotEmpty()) {
+            GroupedColumn(entries.size) { index, shape ->
+                val entry = entries[index]
+                SuggestionRow(
+                    icon = entry.icon,
+                    title = entry.title,
+                    subtitle = entry.domain,
+                    shape = shape,
+                    index = index,
+                    onClick = {
+                        when (val act = entry.action) {
+                            is SuggestionAction.Search -> onSearch(act.term)
+                            is SuggestionAction.OpenDomain -> onOpenSuggestion(act.domain)
+                            is SuggestionAction.SwitchTab -> onSwitchTab(act.tabIndex)
+                            is SuggestionAction.SearchWithUrl -> onSearchWithUrl(act.query, act.url)
+                        }
+                    },
+                )
+            }
         }
     }
 }
@@ -2940,11 +3184,19 @@ private fun EmptyBrowser() {
     }
 }
 
+private sealed class SuggestionAction {
+    data class Search(val term: String) : SuggestionAction()
+    data class OpenDomain(val domain: String) : SuggestionAction()
+    data class SwitchTab(val tabIndex: Int) : SuggestionAction()
+    data class SearchWithUrl(val query: String, val url: String) : SuggestionAction()
+}
+
 private data class Suggestion(
     val title: String,
     val domain: String,
     val icon: ImageVector,
     val tone: ChipTone,
+    val action: SuggestionAction,
 )
 
 private data class DownloadPopupState(

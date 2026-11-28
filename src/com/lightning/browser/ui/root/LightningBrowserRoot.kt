@@ -332,6 +332,7 @@ fun LightningBrowserRoot(
     var fingerprintLock by remember { mutableStateOf(BrowserStore.loadFingerprintLock(context)) }
     var hapticsEnabled by remember { mutableStateOf(BrowserStore.loadHapticFeedback(context)) }
     var barScrollBehavior by remember { mutableStateOf(BrowserStore.loadBarScrollBehavior(context)) }
+    var searchSuggestionSettings by remember { mutableStateOf(BrowserStore.loadSearchSuggestionSettings(context)) }
     var quickArcEnabled by remember { mutableStateOf(BrowserStore.loadQuickArcEnabled(context)) }
     var quickArcStyle by remember { mutableStateOf(BrowserStore.loadQuickArcStyle(context)) }
     var quickArcSize by remember { mutableStateOf(BrowserStore.loadQuickArcSize(context)) }
@@ -505,6 +506,9 @@ fun LightningBrowserRoot(
     }
     LaunchedEffect(barScrollBehavior) {
         if (!incognito) BrowserStore.saveBarScrollBehavior(context, barScrollBehavior)
+    }
+    LaunchedEffect(searchSuggestionSettings) {
+        if (!incognito) BrowserStore.saveSearchSuggestionSettings(context, searchSuggestionSettings)
     }
     LaunchedEffect(quickArcEnabled) {
         if (!incognito) BrowserStore.saveQuickArcEnabled(context, quickArcEnabled)
@@ -1228,7 +1232,16 @@ fun LightningBrowserRoot(
                         barScrollBehavior = barScrollBehavior,
                         recentSearches = recentSearches,
                         recentPages = recentPages,
+                        history = history,
                         bookmarks = bookmarks,
+                        pinnedSites = pinnedSites,
+                        incognito = incognito,
+                        suggestionSettings = searchSuggestionSettings,
+                        onSwitchTab = { targetIndex ->
+                            if (targetIndex in tabs.indices) {
+                                activeIndex = targetIndex
+                            }
+                        },
                         onUpdateTab = { index, tab -> if (index in tabs.indices) tabs[index] = tab },
                         onRecordVisit = { title, domain ->
                             recordVisit(title, domain)
@@ -1364,7 +1377,7 @@ fun LightningBrowserRoot(
                             }
                         },
                         onDismissClipboardBanner = { dismissClipboard(currentClipSig) },
-                        onOpenProfile = { screen = LightningScreen.SETTINGS },
+                        onOpenProfile = { navigateTo(LightningScreen.SETTINGS) },
                         onAddPinned = {
                             pinnedDraft = ""
                             showAddPinned = true
@@ -1685,6 +1698,7 @@ fun LightningBrowserRoot(
                         activeEngineId = activeSearchEngineId,
                         builtInEngine = searchEngine,
                         customEngines = customSearchEngines,
+                        suggestionSettings = searchSuggestionSettings,
                         onSelectBuiltIn = { engine ->
                             searchEngine = engine
                             activeSearchEngineId = engine.name
@@ -1711,6 +1725,7 @@ fun LightningBrowserRoot(
                                 searchEngine = SearchEngine.GOOGLE
                             }
                         },
+                        onSuggestionSettingsChange = { searchSuggestionSettings = it },
                         onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.DOWNLOADS -> DownloadsScreen(
