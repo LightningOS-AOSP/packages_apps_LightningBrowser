@@ -2,6 +2,14 @@ package com.lightning.browser.ui.browser
 
 import android.text.format.Formatter
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -11,6 +19,7 @@ import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -38,25 +48,30 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,7 +82,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -94,12 +108,20 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
+import com.lightning.browser.ui.components.MorphLoader
+import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.components.TonalIconButton
+import com.lightning.browser.ui.components.pressScale
+import com.lightning.browser.ui.theme.ExpressiveShapes
+import com.lightning.browser.ui.theme.EyebrowTextStyle
+import com.lightning.browser.ui.theme.LightningMotion
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.rememberLightningHaptics
 import java.io.File
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -129,7 +151,7 @@ fun PdfViewerScreen(
     modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
-    val context = LocalContext.current
+    val haptics = rememberLightningHaptics()
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
 
@@ -291,6 +313,7 @@ fun PdfViewerScreen(
             pageCount = pageCount,
             onDismiss = { showGoToPage = false },
             onConfirm = { target ->
+                haptics.confirm()
                 showGoToPage = false
                 goToPage(target)
             },
@@ -323,6 +346,7 @@ fun PdfViewerScreen(
         Surface(
             color = colors.surfaceContainerLow,
             tonalElevation = 2.dp,
+            shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(
@@ -335,56 +359,79 @@ fun PdfViewerScreen(
                     icon = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = stringResource(R.string.back),
                     onClick = onBack,
+                    size = 44.dp,
                     tint = colors.onSurface,
                 )
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(10.dp))
+                ShapedIcon(
+                    icon = Icons.Filled.PictureAsPdf,
+                    shape = ExpressiveShapes.Cookie9,
+                    container = colors.primaryContainer,
+                    content = colors.onPrimaryContainer,
+                    size = 38.dp,
+                    iconSize = 20.dp,
+                )
+                Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = title.ifBlank { "PDF" },
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                         color = colors.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     if (pageCount > 0) {
-                        Text(
-                            text = stringResource(R.string.pdf_viewer_page_of, currentPage, pageCount),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = colors.onSurfaceVariant,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable { showGoToPage = true }
-                                .padding(vertical = 2.dp),
-                        )
+                        Spacer(Modifier.height(2.dp))
+                        Surface(
+                            onClick = {
+                                haptics.tick()
+                                showGoToPage = true
+                            },
+                            shape = CircleShape,
+                            color = colors.surfaceContainerHigh,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.pdf_viewer_page_of, currentPage, pageCount),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = colors.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            )
+                        }
                     }
                 }
                 if (canActOnDoc) {
-                    IconButton(onClick = onSaveToDownloads) {
-                        Icon(
-                            imageVector = Icons.Filled.FileDownload,
-                            contentDescription = stringResource(R.string.pdf_viewer_save),
-                            tint = colors.onSurface,
-                        )
-                    }
+                    TonalIconButton(
+                        icon = Icons.Filled.FileDownload,
+                        contentDescription = stringResource(R.string.pdf_viewer_save),
+                        onClick = {
+                            haptics.tick()
+                            onSaveToDownloads()
+                        },
+                        size = 42.dp,
+                        tint = colors.onSurface,
+                    )
                 }
                 Box {
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(
-                            imageVector = Icons.Filled.MoreVert,
-                            contentDescription = stringResource(R.string.pdf_viewer_more),
-                            tint = colors.onSurface,
-                        )
-                    }
+                    TonalIconButton(
+                        icon = Icons.Filled.MoreVert,
+                        contentDescription = stringResource(R.string.pdf_viewer_more),
+                        onClick = {
+                            haptics.tick()
+                            showMenu = true
+                        },
+                        size = 42.dp,
+                        tint = colors.onSurface,
+                    )
                     DropdownMenu(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false },
                         containerColor = colors.surfaceContainerHigh,
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(24.dp),
                     ) {
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.pdf_viewer_share)) },
-                            leadingIcon = { Icon(Icons.Filled.Share, null) },
+                            leadingIcon = { Icon(Icons.Filled.Share, null, tint = colors.onSurface) },
                             enabled = canActOnDoc,
                             onClick = {
                                 showMenu = false
@@ -393,7 +440,7 @@ fun PdfViewerScreen(
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.pdf_viewer_open_external)) },
-                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, null) },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.OpenInNew, null, tint = colors.onSurface) },
                             enabled = pdfFile != null && !isLoading && !loadError && !openError && !isEncryptedError,
                             onClick = {
                                 showMenu = false
@@ -402,7 +449,7 @@ fun PdfViewerScreen(
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.pdf_viewer_print)) },
-                            leadingIcon = { Icon(Icons.Filled.Print, null) },
+                            leadingIcon = { Icon(Icons.Filled.Print, null, tint = colors.onSurface) },
                             enabled = canActOnDoc,
                             onClick = {
                                 showMenu = false
@@ -411,20 +458,40 @@ fun PdfViewerScreen(
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.pdf_viewer_night_mode)) },
-                            leadingIcon = { Icon(Icons.Filled.DarkMode, null) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Filled.DarkMode,
+                                    null,
+                                    tint = if (nightMode) colors.primary else colors.onSurface,
+                                )
+                            },
                             trailingIcon = {
                                 if (nightMode) {
-                                    Icon(Icons.Filled.Check, null, tint = colors.primary)
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = colors.primaryContainer,
+                                        modifier = Modifier.size(24.dp),
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                Icons.Filled.Check,
+                                                null,
+                                                tint = colors.onPrimaryContainer,
+                                                modifier = Modifier.size(16.dp),
+                                            )
+                                        }
+                                    }
                                 }
                             },
                             onClick = {
+                                haptics.tick()
                                 showMenu = false
                                 onToggleNightMode()
                             },
                         )
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.pdf_viewer_info)) },
-                            leadingIcon = { Icon(Icons.Filled.Info, null) },
+                            leadingIcon = { Icon(Icons.Filled.Info, null, tint = colors.onSurface) },
                             enabled = canActOnDoc,
                             onClick = {
                                 showMenu = false
@@ -445,6 +512,7 @@ fun PdfViewerScreen(
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onDoubleTap = { tapOffset ->
+                            haptics.tick()
                             if (scale > 1.1f) {
                                 scale = 1f
                                 offsetX = 0f
@@ -501,60 +569,63 @@ fun PdfViewerScreen(
         ) {
             when {
                 isLoading -> {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = colors.primary)
-                        Spacer(Modifier.height(12.dp))
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(24.dp),
+                    ) {
+                        MorphLoader(
+                            description = stringResource(R.string.pdf_viewer_loading),
+                            size = 88.dp,
+                        )
+                        Spacer(Modifier.height(18.dp))
                         Text(
                             text = stringResource(R.string.pdf_viewer_loading),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = colors.onSurfaceVariant,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.onSurface,
                         )
                     }
                 }
                 isEncryptedError -> {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.pdf_viewer_encrypted),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = colors.onSurfaceVariant,
-                        )
-                    }
+                    ExpressivePdfStateCard(
+                        icon = Icons.Filled.Lock,
+                        message = stringResource(R.string.pdf_viewer_encrypted),
+                        actionLabel = null,
+                        onAction = null,
+                    )
                 }
                 loadError || openError || documentSource == null -> {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.pdf_viewer_error),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = colors.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(16.dp))
-                        Button(onClick = onRetry) {
-                            Text(stringResource(R.string.pdf_viewer_retry))
-                        }
-                    }
+                    ExpressivePdfStateCard(
+                        icon = Icons.Filled.ErrorOutline,
+                        message = stringResource(R.string.pdf_viewer_error),
+                        actionLabel = stringResource(R.string.pdf_viewer_retry),
+                        onAction = {
+                            haptics.tick()
+                            onRetry()
+                        },
+                    )
                 }
                 else -> {
                     val holder = documentSource!!
+                    val visualScale = scale.coerceAtLeast(1f)
+                    val cardFraction = scale.coerceIn(0.35f, 1f)
+                    val baseWidthDp = with(density) { baseWidthPx.toDp() }
+                    val cardWidthDp = baseWidthDp * cardFraction
+                    val pageSpacing = (14f * cardFraction.coerceAtLeast(0.6f)).dp
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
+                                scaleX = visualScale
+                                scaleY = visualScale
                                 translationX = offsetX
                                 translationY = offsetY
                             },
                     ) {
                         LazyColumn(
                             state = listState,
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp),
+                            verticalArrangement = Arrangement.spacedBy(pageSpacing),
                             modifier = Modifier.fillMaxSize(),
                         ) {
                             items(count = holder.pageCount, key = { it }) { pageIndex ->
@@ -564,6 +635,7 @@ fun PdfViewerScreen(
                                     renderWidthPx = renderWidthPx,
                                     nightMode = nightMode,
                                     nightFilter = nightFilter,
+                                    modifier = Modifier.width(cardWidthDp),
                                 )
                             }
                         }
@@ -578,14 +650,36 @@ fun PdfViewerScreen(
                 pageCount = pageCount,
                 scale = scale,
                 isFitPage = isFitPageActive,
-                onPrevPage = { goToPage(currentPage - 1) },
-                onNextPage = { goToPage(currentPage + 1) },
-                onPagePillClick = { showGoToPage = true },
-                onScrubFinished = { target -> goToPage(target) },
-                onZoomOut = { applyScaleCentered(scale - 0.25f) },
-                onZoomReset = { applyScaleCentered(1f) },
-                onZoomIn = { applyScaleCentered(scale + 0.25f) },
+                onPrevPage = {
+                    haptics.tick()
+                    goToPage(currentPage - 1)
+                },
+                onNextPage = {
+                    haptics.tick()
+                    goToPage(currentPage + 1)
+                },
+                onPagePillClick = {
+                    haptics.tick()
+                    showGoToPage = true
+                },
+                onScrubFinished = { target ->
+                    haptics.tick()
+                    goToPage(target)
+                },
+                onZoomOut = {
+                    haptics.tick()
+                    applyScaleCentered(scale - 0.25f)
+                },
+                onZoomReset = {
+                    haptics.tick()
+                    applyScaleCentered(1f)
+                },
+                onZoomIn = {
+                    haptics.tick()
+                    applyScaleCentered(scale + 0.25f)
+                },
                 onToggleFit = {
+                    haptics.tick()
                     if (isFitPageActive) {
                         applyScaleCentered(1f)
                     } else {
@@ -593,6 +687,67 @@ fun PdfViewerScreen(
                     }
                 },
             )
+        }
+    }
+}
+
+@Composable
+private fun ExpressivePdfStateCard(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    message: String,
+    actionLabel: String?,
+    onAction: (() -> Unit)?,
+) {
+    val colors = LightningTheme.colors
+    Surface(
+        shape = RoundedCornerShape(28.dp),
+        color = colors.surfaceContainerLow,
+        tonalElevation = 2.dp,
+        modifier = Modifier
+            .padding(horizontal = 28.dp)
+            .fillMaxWidth(),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
+        ) {
+            ShapedIcon(
+                icon = icon,
+                shape = ExpressiveShapes.Burst8,
+                container = MaterialTheme.colorScheme.errorContainer,
+                content = MaterialTheme.colorScheme.onErrorContainer,
+                size = 64.dp,
+                iconSize = 28.dp,
+            )
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = message,
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            if (actionLabel != null && onAction != null) {
+                Spacer(Modifier.height(18.dp))
+                Button(
+                    onClick = onAction,
+                    shape = CircleShape,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.primary,
+                        contentColor = colors.onPrimary,
+                    ),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = actionLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
+            }
         }
     }
 }
@@ -624,33 +779,84 @@ private fun PdfBottomToolbar(
 
     val displayedPage = if (scrubbing) scrubValue.roundToInt().coerceIn(1, pageCount) else currentPage
 
+    val fitContainer by animateColorAsState(
+        if (isFitPage) colors.primary else colors.surfaceContainerHigh,
+        LightningMotion.defaultEffects(),
+        label = "fitBg",
+    )
+    val fitContent by animateColorAsState(
+        if (isFitPage) colors.onPrimary else colors.onSurfaceVariant,
+        LightningMotion.defaultEffects(),
+        label = "fitFg",
+    )
+    val fitRadius by animateDpAsState(
+        if (isFitPage) 18.dp else 12.dp,
+        LightningMotion.defaultSpatial(),
+        label = "fitRadius",
+    )
+
+    val pagePillSource = remember { MutableInteractionSource() }
+    val zoomPillSource = remember { MutableInteractionSource() }
+
     Surface(
         color = colors.surfaceContainerLow,
         tonalElevation = 4.dp,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 14.dp, vertical = 10.dp),
         ) {
             if (pageCount > 1) {
-                Slider(
-                    value = scrubValue.coerceIn(1f, pageCount.toFloat()),
-                    onValueChange = {
-                        scrubbing = true
-                        scrubValue = it
-                    },
-                    onValueChangeFinished = {
-                        val target = scrubValue.roundToInt().coerceIn(1, pageCount)
-                        scrubbing = false
-                        onScrubFinished(target)
-                    },
-                    valueRange = 1f..pageCount.toFloat(),
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(32.dp),
-                )
+                        .padding(horizontal = 4.dp),
+                ) {
+                    Slider(
+                        value = scrubValue.coerceIn(1f, pageCount.toFloat()),
+                        onValueChange = {
+                            scrubbing = true
+                            scrubValue = it
+                        },
+                        onValueChangeFinished = {
+                            val target = scrubValue.roundToInt().coerceIn(1, pageCount)
+                            scrubbing = false
+                            onScrubFinished(target)
+                        },
+                        valueRange = 1f..pageCount.toFloat(),
+                        colors = SliderDefaults.colors(
+                            thumbColor = colors.primary,
+                            activeTrackColor = colors.primary,
+                            inactiveTrackColor = colors.surfaceContainerHighest,
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(30.dp),
+                    )
+                    AnimatedVisibility(
+                        visible = scrubbing,
+                        enter = fadeIn() + scaleIn(initialScale = 0.85f),
+                        exit = fadeOut() + scaleOut(targetScale = 0.85f),
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = colors.primaryContainer,
+                            modifier = Modifier.padding(start = 8.dp),
+                        ) {
+                            Text(
+                                text = displayedPage.toString(),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = colors.onPrimaryContainer,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(6.dp))
             }
 
             Row(
@@ -658,85 +864,112 @@ private fun PdfBottomToolbar(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = onPrevPage,
-                        enabled = currentPage > 1,
-                        modifier = Modifier.size(36.dp),
+                Surface(
+                    shape = CircleShape,
+                    color = colors.surfaceContainerHigh,
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                        TonalIconButton(
+                            icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                             contentDescription = stringResource(R.string.find_in_page_prev),
+                            onClick = onPrevPage,
+                            enabled = currentPage > 1,
+                            size = 36.dp,
+                            iconSize = 20.dp,
+                            tint = if (currentPage > 1) colors.onSurface else colors.onSurfaceVariant.copy(alpha = 0.4f),
                         )
-                    }
-                    Surface(
-                        onClick = onPagePillClick,
-                        shape = RoundedCornerShape(16.dp),
-                        color = colors.surfaceContainerHigh,
-                    ) {
-                        Text(
-                            text = stringResource(R.string.pdf_viewer_page_pill, displayedPage, pageCount),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = colors.onSurface,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                        )
-                    }
-                    IconButton(
-                        onClick = onNextPage,
-                        enabled = currentPage < pageCount,
-                        modifier = Modifier.size(36.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                        Surface(
+                            onClick = onPagePillClick,
+                            interactionSource = pagePillSource,
+                            shape = CircleShape,
+                            color = colors.surfaceContainerHighest,
+                            modifier = Modifier.pressScale(pagePillSource),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.pdf_viewer_page_pill, displayedPage, pageCount),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = colors.onSurface,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                            )
+                        }
+                        TonalIconButton(
+                            icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                             contentDescription = stringResource(R.string.find_in_page_next),
+                            onClick = onNextPage,
+                            enabled = currentPage < pageCount,
+                            size = 36.dp,
+                            iconSize = 20.dp,
+                            tint = if (currentPage < pageCount) colors.onSurface else colors.onSurfaceVariant.copy(alpha = 0.4f),
                         )
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = onZoomOut,
-                        enabled = scale > 0.36f,
-                        modifier = Modifier.size(36.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Remove,
-                            contentDescription = stringResource(R.string.pdf_viewer_zoom_out),
-                        )
-                    }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
                     Surface(
-                        onClick = onZoomReset,
-                        shape = RoundedCornerShape(16.dp),
+                        shape = CircleShape,
                         color = colors.surfaceContainerHigh,
                     ) {
-                        Text(
-                            text = "${(scale * 100f).roundToInt()}%",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = colors.onSurface,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                        ) {
+                            TonalIconButton(
+                                icon = Icons.Filled.Remove,
+                                contentDescription = stringResource(R.string.pdf_viewer_zoom_out),
+                                onClick = onZoomOut,
+                                enabled = scale > 0.36f,
+                                size = 34.dp,
+                                iconSize = 18.dp,
+                                tint = if (scale > 0.36f) colors.onSurface else colors.onSurfaceVariant.copy(alpha = 0.4f),
+                            )
+                            Surface(
+                                onClick = onZoomReset,
+                                interactionSource = zoomPillSource,
+                                shape = CircleShape,
+                                color = colors.surfaceContainerHighest,
+                                modifier = Modifier.pressScale(zoomPillSource),
+                            ) {
+                                Text(
+                                    text = "${(scale * 100f).roundToInt()}%",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = colors.onSurface,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+                                )
+                            }
+                            TonalIconButton(
+                                icon = Icons.Filled.Add,
+                                contentDescription = stringResource(R.string.pdf_viewer_zoom_in),
+                                onClick = onZoomIn,
+                                enabled = scale < 4.99f,
+                                size = 34.dp,
+                                iconSize = 18.dp,
+                                tint = if (scale < 4.99f) colors.onSurface else colors.onSurfaceVariant.copy(alpha = 0.4f),
+                            )
+                        }
                     }
-                    IconButton(
-                        onClick = onZoomIn,
-                        enabled = scale < 4.99f,
-                        modifier = Modifier.size(36.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Add,
-                            contentDescription = stringResource(R.string.pdf_viewer_zoom_in),
-                        )
-                    }
-                    IconButton(
+
+                    Surface(
                         onClick = onToggleFit,
-                        modifier = Modifier.size(36.dp),
+                        shape = RoundedCornerShape(fitRadius),
+                        color = fitContainer,
+                        modifier = Modifier.size(40.dp),
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.FitScreen,
-                            contentDescription = stringResource(
-                                if (isFitPage) R.string.pdf_viewer_fit_width else R.string.pdf_viewer_fit_page,
-                            ),
-                            tint = if (isFitPage) colors.primary else colors.onSurface,
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.FitScreen,
+                                contentDescription = stringResource(
+                                    if (isFitPage) R.string.pdf_viewer_fit_width else R.string.pdf_viewer_fit_page,
+                                ),
+                                tint = fitContent,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -751,6 +984,7 @@ private fun PdfPageCard(
     renderWidthPx: Int,
     nightMode: Boolean,
     nightFilter: ColorFilter,
+    modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
     val rendered by produceState<RenderedPdfPage?>(initialValue = null, holder, pageIndex, renderWidthPx) {
@@ -769,16 +1003,16 @@ private fun PdfPageCard(
     val cardColor = if (nightMode) Color.Black else Color.White
 
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         color = cardColor,
-        shadowElevation = 2.dp,
-        modifier = Modifier
-            .fillMaxWidth()
+        border = BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.35f)),
+        shadowElevation = 3.dp,
+        modifier = modifier
             .then(
                 if (page != null) {
                     Modifier.aspectRatio(page.width.toFloat() / page.height.toFloat().coerceAtLeast(1f))
                 } else {
-                    Modifier.height(420.dp)
+                    Modifier.aspectRatio(holder.pageAspect(pageIndex).coerceIn(0.4f, 2f))
                 },
             ),
     ) {
@@ -800,8 +1034,8 @@ private fun PdfPageCard(
             ) {
                 CircularProgressIndicator(
                     color = colors.primary,
-                    modifier = Modifier.size(24.dp),
-                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(26.dp),
+                    strokeWidth = 2.5.dp,
                 )
             }
         }
@@ -815,13 +1049,21 @@ private fun GoToPageDialog(
     onDismiss: () -> Unit,
     onConfirm: (Int) -> Unit,
 ) {
+    val colors = LightningTheme.colors
     var input by remember { mutableStateOf(currentPage.toString()) }
     val parsed = input.trim().toIntOrNull()
     val valid = parsed != null && parsed in 1..pageCount
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.pdf_viewer_go_to_page)) },
+        containerColor = colors.surfaceContainerHigh,
+        shape = RoundedCornerShape(28.dp),
+        title = {
+            Text(
+                text = stringResource(R.string.pdf_viewer_go_to_page),
+                style = MaterialTheme.typography.titleLarge,
+            )
+        },
         text = {
             OutlinedTextField(
                 value = input,
@@ -833,6 +1075,7 @@ private fun GoToPageDialog(
                 label = { Text(stringResource(R.string.pdf_viewer_page_number, pageCount)) },
                 singleLine = true,
                 isError = input.isNotEmpty() && !valid,
+                shape = RoundedCornerShape(16.dp),
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Number,
                     imeAction = ImeAction.Done,
@@ -844,8 +1087,9 @@ private fun GoToPageDialog(
             )
         },
         confirmButton = {
-            TextButton(
+            Button(
                 enabled = valid,
+                shape = CircleShape,
                 onClick = { if (valid && parsed != null) onConfirm(parsed) },
             ) {
                 Text(stringResource(R.string.pdf_viewer_go))
@@ -875,41 +1119,83 @@ private fun PdfDocumentInfoSheetContent(
     val hMm = (hPt * 25.4 / 72.0).roundToInt()
     val dimText = String.format(Locale.US, "%d × %d pt (%d × %d mm)", wPt, hPt, wMm, hMm)
 
+    val rowCount = if (!sourceUrl.isNullOrBlank()) 4 else 3
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
             .padding(bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = colors.onSurface,
-        )
-        InfoRow(label = stringResource(R.string.pdf_viewer_info_pages), value = pageCount.toString())
-        InfoRow(label = stringResource(R.string.pdf_viewer_info_size), value = formattedSize)
-        InfoRow(label = stringResource(R.string.pdf_viewer_info_page_size), value = dimText)
-        if (!sourceUrl.isNullOrBlank()) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = colors.surfaceContainerHigh,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                    Text(
-                        text = stringResource(R.string.pdf_viewer_info_source),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    SelectionContainer {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp),
+        ) {
+            ShapedIcon(
+                icon = Icons.Filled.PictureAsPdf,
+                shape = ExpressiveShapes.Cookie9,
+                container = colors.primaryContainer,
+                content = colors.onPrimaryContainer,
+                size = 48.dp,
+                iconSize = 24.dp,
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.pdf_viewer_info).uppercase(),
+                    style = EyebrowTextStyle,
+                    color = colors.primary,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            InfoRow(
+                label = stringResource(R.string.pdf_viewer_info_pages),
+                value = pageCount.toString(),
+                shape = ExpressiveShapes.grouped(0, rowCount),
+            )
+            InfoRow(
+                label = stringResource(R.string.pdf_viewer_info_size),
+                value = formattedSize,
+                shape = ExpressiveShapes.grouped(1, rowCount),
+            )
+            InfoRow(
+                label = stringResource(R.string.pdf_viewer_info_page_size),
+                value = dimText,
+                shape = ExpressiveShapes.grouped(2, rowCount),
+            )
+            if (!sourceUrl.isNullOrBlank()) {
+                Surface(
+                    shape = ExpressiveShapes.grouped(3, rowCount),
+                    color = colors.surfaceContainerHigh,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                         Text(
-                            text = sourceUrl,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.onSurface,
+                            text = stringResource(R.string.pdf_viewer_info_source),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = colors.onSurfaceVariant,
                         )
+                        Spacer(Modifier.height(4.dp))
+                        SelectionContainer {
+                            Text(
+                                text = sourceUrl,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.onSurface,
+                            )
+                        }
                     }
                 }
             }
@@ -918,10 +1204,14 @@ private fun PdfDocumentInfoSheetContent(
 }
 
 @Composable
-private fun InfoRow(label: String, value: String) {
+private fun InfoRow(
+    label: String,
+    value: String,
+    shape: androidx.compose.ui.graphics.Shape,
+) {
     val colors = LightningTheme.colors
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = shape,
         color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -930,7 +1220,7 @@ private fun InfoRow(label: String, value: String) {
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 14.dp),
         ) {
             Text(
                 text = label,
@@ -940,7 +1230,7 @@ private fun InfoRow(label: String, value: String) {
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
+                fontWeight = FontWeight.SemiBold,
                 color = colors.onSurface,
             )
         }
