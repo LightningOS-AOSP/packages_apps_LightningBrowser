@@ -17,6 +17,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        BrowserDownloads.cleanupOldPreviewCache(this)
         handleIntent(intent)
         setContent {
             LightningBrowserRoot(initialUrl = incomingUrl.value)

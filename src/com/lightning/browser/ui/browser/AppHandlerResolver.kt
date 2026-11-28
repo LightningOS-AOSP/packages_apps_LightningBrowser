@@ -137,26 +137,52 @@ object AppHandlerResolver {
         val contentUri = runCatching {
             FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
         }.getOrNull() ?: return false
-        val intent = Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(contentUri, mimeType)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            if (!targetPackage.isNullOrBlank()) {
+        if (!targetPackage.isNullOrBlank()) {
+            runCatching {
+                context.grantUriPermission(targetPackage, contentUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(contentUri, mimeType)
+                clipData = android.content.ClipData.newRawUri(null, contentUri)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 if (!targetClass.isNullOrBlank()) {
                     component = ComponentName(targetPackage, targetClass)
                 } else {
                     setPackage(targetPackage)
                 }
             }
-        }
-        return runCatching {
-            context.startActivity(intent)
-            true
-        }.getOrElse {
-            if (!targetPackage.isNullOrBlank()) {
-                launchFile(context, file, mimeType, null, null)
-            } else {
-                false
+            return runCatching {
+                android.util.Log.d("LightningDL", "launchFile pkg=$targetPackage cls=$targetClass mime=$mimeType uri=$contentUri")
+                context.startActivity(intent)
+                true
+            }.getOrElse { err ->
+                android.util.Log.w("LightningDL", "launchFile failed pkg=$targetPackage cls=$targetClass mime=$mimeType: ${err.message}")
+                when {
+                    !targetClass.isNullOrBlank() ->
+                        launchFile(context, file, mimeType, targetPackage, null)
+                    mimeType.startsWith("image/") && mimeType != "image/*" ->
+                        launchFile(context, file, "image/*", targetPackage, null)
+                    else ->
+                        launchFile(context, file, mimeType, null, null)
+                }
             }
         }
+        val viewIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(contentUri, mimeType)
+            clipData = android.content.ClipData.newRawUri(null, contentUri)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        if (viewIntent.resolveActivity(context.packageManager) == null &&
+            mimeType.startsWith("image/") && mimeType != "image/*"
+        ) {
+            viewIntent.setDataAndType(contentUri, "image/*")
+        }
+        val chooser = Intent.createChooser(viewIntent, file.name).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return runCatching {
+            context.startActivity(chooser)
+            true
+        }.getOrDefault(false)
     }
 }

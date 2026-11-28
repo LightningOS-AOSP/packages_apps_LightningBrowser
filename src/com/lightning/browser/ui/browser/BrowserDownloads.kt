@@ -883,10 +883,14 @@ object BrowserDownloads {
             mime == "image/jxl" || ext == "jxl" -> "jxl"
             mime == "image/svg+xml" || ext == "svg" -> "svg"
             mime == "text/xml" || mime == "application/xml" || ext == "xml" -> "xml"
+            mime.startsWith("image/") || ext in setOf("jpg", "jpeg", "png", "gif", "bmp", "heic", "heif", "ico") -> "jpeg"
             else -> null
         }
         if (ruleKey != null) {
-            return prefs[ruleKey] ?: BrowserStore.ContentPreference(BrowserStore.ContentAction.SAVE_FILE)
+            val defaultAction = BrowserStore.defaultContentTypeRules
+                .firstOrNull { it.key == ruleKey }?.defaultAction
+                ?: BrowserStore.ContentAction.SAVE_FILE
+            return prefs[ruleKey] ?: BrowserStore.ContentPreference(defaultAction)
         }
         val action = if (BrowserStore.loadDownloadOtherAsk(context) || BrowserStore.loadDownloadAskBefore(context)) {
             BrowserStore.ContentAction.ALWAYS_ASK
@@ -894,6 +898,17 @@ object BrowserDownloads {
             BrowserStore.ContentAction.SAVE_FILE
         }
         return BrowserStore.ContentPreference(action)
+    }
+
+    fun cleanupOldPreviewCache(context: Context, maxAgeMs: Long = 24L * 60L * 60L * 1000L) {
+        val previewDir = File(context.applicationContext.cacheDir, "preview")
+        if (!previewDir.exists()) return
+        val cutoff = System.currentTimeMillis() - maxAgeMs
+        previewDir.listFiles()?.forEach { file ->
+            if (file.isFile && file.lastModified() < cutoff) {
+                runCatching { file.delete() }
+            }
+        }
     }
 
     fun downloadToCacheFile(
@@ -1170,9 +1185,15 @@ object BrowserDownloads {
             "psd" -> "image/vnd.adobe.photoshop"
             "png" -> "image/png"
             "jpg", "jpeg" -> "image/jpeg"
+            "jxl" -> "image/jxl"
+            "avif" -> "image/avif"
             "webp" -> "image/webp"
             "gif" -> "image/gif"
+            "bmp" -> "image/bmp"
+            "heic" -> "image/heic"
+            "heif" -> "image/heif"
             "svg" -> "image/svg+xml"
+            "xml" -> "text/xml"
             "pdf" -> "application/pdf"
             "zip" -> "application/zip"
             "json" -> "application/json"

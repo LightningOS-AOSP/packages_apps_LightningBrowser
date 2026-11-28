@@ -1009,10 +1009,6 @@ fun LightningBrowserRoot(
     }
 
     BackHandler(enabled = incognito && !showQuickArc && screen == LightningScreen.HOME) {
-        val intent = Intent(context, com.lightning.browser.MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-        }
-        runCatching { context.startActivity(intent) }
         (context as? android.app.Activity)?.finish()
     }
 

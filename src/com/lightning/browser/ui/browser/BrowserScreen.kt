@@ -147,6 +147,35 @@ private const val CHROME_SCROLL_THRESHOLD = 48
 private const val CHROME_SETTLE_MS = 400L
 private const val DESKTOP_USER_AGENT =
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+
+private val IMAGE_FIT_SCRIPT = """
+    (function() {
+        if (!document || !document.contentType || !document.contentType.startsWith('image/')) return;
+        var meta = document.querySelector('meta[name="viewport"]');
+        if (!meta) {
+            meta = document.createElement('meta');
+            meta.name = 'viewport';
+            if (document.head) document.head.appendChild(meta);
+        }
+        if (meta) {
+            meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes';
+        }
+        var img = document.querySelector('body > img');
+        if (img && document.body) {
+            document.documentElement.style.height = '100%';
+            document.body.style.margin = '0';
+            document.body.style.minHeight = '100%';
+            document.body.style.display = 'flex';
+            document.body.style.alignItems = 'center';
+            document.body.style.justifyContent = 'center';
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '100vh';
+            img.style.width = 'auto';
+            img.style.height = 'auto';
+            img.style.objectFit = 'contain';
+        }
+    })();
+""".trimIndent()
 private fun desktopScale(webView: WebView): Float {
     val density = webView.resources.displayMetrics.density.coerceAtLeast(1f)
     val widthPx = if (webView.width > 0) webView.width else webView.resources.displayMetrics.widthPixels
@@ -417,6 +446,7 @@ fun BrowserScreen(
         val effectiveMime = mimeType?.takeIf { it.isNotBlank() && it != "application/octet-stream" }
             ?: BrowserDownloads.mimeTypeFromFileName(fileName)
             ?: "*/*"
+        Log.d("LightningDL", "startDownload url=$url file=$fileName mime=$effectiveMime action=${pref.action} pkg=${pref.packageName}")
         when (pref.action) {
             BrowserStore.ContentAction.OPEN_IN_BROWSER -> {
                 if (isPdf) {
@@ -433,7 +463,12 @@ fun BrowserScreen(
             }
             BrowserStore.ContentAction.OPEN_WITH_APP -> {
                 BrowserDownloads.downloadToCacheFile(context, url, userAgent, fileName) { file ->
-                    val opened = file != null && AppHandlerResolver.launchFile(
+                    if (file == null) {
+                        Log.w("LightningDL", "downloadToCacheFile returned null for $url")
+                        onShowMessage(context.getString(R.string.menu_save_offline_failed))
+                        return@downloadToCacheFile
+                    }
+                    val opened = AppHandlerResolver.launchFile(
                         context,
                         file,
                         effectiveMime,
@@ -441,7 +476,7 @@ fun BrowserScreen(
                         pref.className,
                     )
                     if (!opened) {
-                        proceedDownload(url, userAgent, contentDisposition, mimeType)
+                        onShowMessage(context.getString(R.string.dl_no_external_apps))
                     }
                 }
             }
@@ -2031,6 +2066,29 @@ private fun BrowserPage(
                             }
                             return true
                         }
+                        if (request.isForMainFrame && (target.scheme.equals("http", true) || target.scheme.equals("https", true))) {
+                            val lastSeg = target.lastPathSegment.orEmpty()
+                            val ext = lastSeg.substringAfterLast('.', "").lowercase()
+                            val ruleKey = when (ext) {
+                                "pdf" -> "pdf"
+                                "jpg", "jpeg", "png", "gif", "bmp", "heic", "heif", "ico" -> "jpeg"
+                                "jxl" -> "jxl"
+                                "avif" -> "avif"
+                                "webp" -> "webp"
+                                "svg" -> "svg"
+                                "xml" -> "xml"
+                                else -> null
+                            }
+                            if (ruleKey != null) {
+                                val pref = BrowserStore.loadContentPreferences(context)[ruleKey]
+                                if (pref != null && pref.action != BrowserStore.ContentAction.OPEN_IN_BROWSER) {
+                                    val mime = BrowserDownloads.mimeTypeFromFileName(lastSeg)
+                                    val ua = view?.settings?.userAgentString
+                                    view?.post { config.onDownload(target.toString(), ua, null, mime) }
+                                    return true
+                                }
+                            }
+                        }
                         if (config.adBlocking && request.isForMainFrame && !(request.hasGesture() && !request.isRedirect)) {
                             val host = target.host.orEmpty()
                             if (AdBlocker.isAdHost(host, context)) {
@@ -2051,12 +2109,45 @@ private fun BrowserPage(
 
                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                         super.onPageStarted(view, url, favicon)
+                        if (url != null && (url.startsWith("http://", true) || url.startsWith("https://", true))) {
+                            val parsed = runCatching { Uri.parse(url) }.getOrNull()
+                            val lastSeg = parsed?.lastPathSegment.orEmpty()
+                            val ext = lastSeg.substringAfterLast('.', "").lowercase()
+                            if (ext in setOf("pdf", "jxl", "avif", "webp", "svg", "xml", "jpg", "jpeg", "png", "gif", "bmp", "heic", "heif", "ico")) {
+                                val mime = BrowserDownloads.mimeTypeFromFileName(lastSeg)
+                                val pref = BrowserDownloads.resolvePreferenceForDownload(context, url, mime, lastSeg)
+                                if (pref.action != BrowserStore.ContentAction.OPEN_IN_BROWSER) {
+                                    Log.d("LightningDL", "onPageStarted intercept url=$url ext=$ext action=${pref.action}")
+                                    val ua = view?.settings?.userAgentString
+                                    view?.stopLoading()
+                                    if (view?.canGoBack() == true) view.goBack()
+                                    view?.post { config.onDownload(url, ua, null, mime) }
+                                    return
+                                }
+                            }
+                        }
                         lastReadingTimeUrl = url
                         config.onReadingTime(null)
                         url?.let { config.onUrlChange(it) }
                         config.onNavChange(view?.canGoBack() ?: false, view?.canGoForward() ?: false)
                         if (config.desktopMode && view != null) {
                             view.evaluateJavascript(desktopViewportScript(view), null)
+                        }
+                        view?.evaluateJavascript(IMAGE_FIT_SCRIPT, null)
+                        if (url != null && (url.startsWith("http://", true) || url.startsWith("https://", true))) {
+                            view?.evaluateJavascript("document && document.contentType ? document.contentType : ''") { raw ->
+                                val ct = raw?.trim('"')?.lowercase().orEmpty()
+                                if (ct.startsWith("image/") || ct == "application/pdf") {
+                                    val fileName = BrowserDownloads.fileNameFrom(null, url, ct)
+                                    val pref = BrowserDownloads.resolvePreferenceForDownload(context, url, ct, fileName)
+                                    if (pref.action == BrowserStore.ContentAction.OPEN_WITH_APP) {
+                                        Log.d("LightningDL", "onPageFinished intercept contentType=$ct url=$url")
+                                        val ua = view.settings.userAgentString
+                                        if (view.canGoBack()) view.goBack()
+                                        config.onDownload(url, ua, null, ct)
+                                    }
+                                }
+                            }
                         }
                         view?.evaluateJavascript(DOWNLOAD_INTERCEPT_SCRIPT, null)
                         view?.evaluateJavascript(
@@ -2105,6 +2196,22 @@ private fun BrowserPage(
                         scheduleReadingTime(view, url)
                         if (config.desktopMode && view != null) {
                             view.evaluateJavascript(desktopViewportScript(view), null)
+                        }
+                        view?.evaluateJavascript(IMAGE_FIT_SCRIPT, null)
+                        if (url != null && (url.startsWith("http://", true) || url.startsWith("https://", true))) {
+                            view?.evaluateJavascript("document && document.contentType ? document.contentType : ''") { raw ->
+                                val ct = raw?.trim('"')?.lowercase().orEmpty()
+                                if (ct.startsWith("image/") || ct == "application/pdf") {
+                                    val fileName = BrowserDownloads.fileNameFrom(null, url, ct)
+                                    val pref = BrowserDownloads.resolvePreferenceForDownload(context, url, ct, fileName)
+                                    if (pref.action == BrowserStore.ContentAction.OPEN_WITH_APP) {
+                                        Log.d("LightningDL", "onPageFinished intercept contentType=$ct url=$url")
+                                        val ua = view.settings.userAgentString
+                                        if (view.canGoBack()) view.goBack()
+                                        config.onDownload(url, ua, null, ct)
+                                    }
+                                }
+                            }
                         }
                         view?.evaluateJavascript(DOWNLOAD_INTERCEPT_SCRIPT, null)
                         view?.evaluateJavascript(

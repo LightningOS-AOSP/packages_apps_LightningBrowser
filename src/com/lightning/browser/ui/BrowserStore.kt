@@ -413,8 +413,15 @@ object BrowserStore {
             supportedActions = listOf(ContentAction.SAVE_FILE, ContentAction.OPEN_IN_BROWSER, ContentAction.ALWAYS_ASK),
         ),
         ContentTypeRule(
+            key = "jpeg",
+            title = "Image Files (JPG, PNG, GIF)",
+            mimeOrScheme = "image/*",
+            defaultAction = ContentAction.OPEN_IN_BROWSER,
+            supportedActions = listOf(ContentAction.OPEN_IN_BROWSER, ContentAction.SAVE_FILE, ContentAction.ALWAYS_ASK),
+        ),
+        ContentTypeRule(
             key = "jxl",
-            title = "JPEG XL Image File",
+            title = "JPEG XL Image File (JXL)",
             mimeOrScheme = "image/jxl",
             defaultAction = ContentAction.SAVE_FILE,
             supportedActions = listOf(ContentAction.SAVE_FILE, ContentAction.ALWAYS_ASK),
