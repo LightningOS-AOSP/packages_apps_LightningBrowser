@@ -51,6 +51,7 @@ object BrowserStore {
     private const val KEY_QUICK_ARC_STYLE = "quick_arc_style"
     private const val KEY_QUICK_ARC_SIZE = "quick_arc_size"
     private const val KEY_QUICK_ARC_ITEMS = "quick_arc_items"
+    private const val KEY_BAR_SCROLL_BEHAVIOR = "bar_scroll_behavior"
     private const val KEY_TAB_PREVIEWS = "tab_previews"
     private const val KEY_CLIPBOARD_PROMPT = "clipboard_url_prompt"
     private const val KEY_WAYBACK_FALLBACK = "wayback_fallback"
@@ -982,6 +983,22 @@ object BrowserStore {
     fun saveQuickArcItems(context: Context, items: List<QuickArcAction>) {
         val sanitized = items.distinct().ifEmpty { defaultQuickArcItems }
         prefs(context).edit().putString(KEY_QUICK_ARC_ITEMS, sanitized.joinToString(",") { it.name }).apply()
+    }
+
+    enum class BarScrollBehavior {
+        HIDE_BOTH,
+        ALWAYS_VISIBLE,
+        TOP_ALWAYS,
+        BOTTOM_ALWAYS,
+    }
+
+    fun loadBarScrollBehavior(context: Context): BarScrollBehavior {
+        val raw = prefs(context).getString(KEY_BAR_SCROLL_BEHAVIOR, null)
+        return BarScrollBehavior.entries.firstOrNull { it.name == raw } ?: BarScrollBehavior.HIDE_BOTH
+    }
+
+    fun saveBarScrollBehavior(context: Context, behavior: BarScrollBehavior) {
+        prefs(context).edit().putString(KEY_BAR_SCROLL_BEHAVIOR, behavior.name).apply()
     }
 
     fun loadPdfNightMode(context: Context): Boolean =

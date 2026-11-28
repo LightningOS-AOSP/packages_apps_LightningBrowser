@@ -331,6 +331,7 @@ fun LightningBrowserRoot(
     var adBlocking by remember { mutableStateOf(BrowserStore.loadAdBlocking(context)) }
     var fingerprintLock by remember { mutableStateOf(BrowserStore.loadFingerprintLock(context)) }
     var hapticsEnabled by remember { mutableStateOf(BrowserStore.loadHapticFeedback(context)) }
+    var barScrollBehavior by remember { mutableStateOf(BrowserStore.loadBarScrollBehavior(context)) }
     var quickArcEnabled by remember { mutableStateOf(BrowserStore.loadQuickArcEnabled(context)) }
     var quickArcStyle by remember { mutableStateOf(BrowserStore.loadQuickArcStyle(context)) }
     var quickArcSize by remember { mutableStateOf(BrowserStore.loadQuickArcSize(context)) }
@@ -501,6 +502,9 @@ fun LightningBrowserRoot(
     }
     LaunchedEffect(hapticsEnabled) {
         if (!incognito) BrowserStore.saveHapticFeedback(context, hapticsEnabled)
+    }
+    LaunchedEffect(barScrollBehavior) {
+        if (!incognito) BrowserStore.saveBarScrollBehavior(context, barScrollBehavior)
     }
     LaunchedEffect(quickArcEnabled) {
         if (!incognito) BrowserStore.saveQuickArcEnabled(context, quickArcEnabled)
@@ -1170,9 +1174,15 @@ fun LightningBrowserRoot(
                 .background(LightningTheme.colors.surface),
         ) {
             LaunchedEffect(screen, activeIndex) { chromeVisible = true }
+            val isBottomBarVisible = when (barScrollBehavior) {
+                BrowserStore.BarScrollBehavior.ALWAYS_VISIBLE,
+                BrowserStore.BarScrollBehavior.BOTTOM_ALWAYS -> true
+                BrowserStore.BarScrollBehavior.HIDE_BOTH,
+                BrowserStore.BarScrollBehavior.TOP_ALWAYS -> chromeVisible
+            }
             val showBar = screen == LightningScreen.HOME ||
                 screen == LightningScreen.TABS ||
-                (screen == LightningScreen.BROWSER && chromeVisible)
+                (screen == LightningScreen.BROWSER && isBottomBarVisible)
             val barPadding by animateDpAsState(
                 targetValue = if (showBar) BAR_BOTTOM_PADDING else 0.dp,
                 animationSpec = tween(200),
@@ -1215,6 +1225,7 @@ fun LightningBrowserRoot(
                         onFindConsumed = { findInPageSignal = 0 },
                         chromeVisible = chromeVisible,
                         onChromeVisibleChange = { chromeVisible = it },
+                        barScrollBehavior = barScrollBehavior,
                         recentSearches = recentSearches,
                         recentPages = recentPages,
                         bookmarks = bookmarks,
@@ -1641,6 +1652,8 @@ fun LightningBrowserRoot(
                         },
                         onHapticsChange = { hapticsEnabled = it },
                         onOpenQuickArc = { navigateTo(LightningScreen.QUICK_ARC) },
+                        barScrollBehavior = barScrollBehavior,
+                        onBarScrollBehaviorChange = { barScrollBehavior = it },
                         onBack = { navigateBack(LightningScreen.SETTINGS) },
                     )
                     LightningScreen.QUICK_ARC -> QuickArcSettingsScreen(

@@ -304,6 +304,16 @@
     <string name="appearance_haptics_summary">Tactile feedback for taps, toggles and gestures</string>
     <string name="appearance_quick_arc">Quick Arc menu</string>
     <string name="appearance_quick_arc_summary">Long-press the Lightning button for quick shortcuts</string>
+    <string name="settings_toolbar_behavior_title">Toolbar scroll behavior</string>
+    <string name="settings_toolbar_behavior_summary">Choose how the top search bar and bottom bar behave when scrolling</string>
+    <string name="toolbar_behavior_hide_both">Hide both on scroll</string>
+    <string name="toolbar_behavior_hide_both_desc">Both the top search bar and bottom bar hide while scrolling down</string>
+    <string name="toolbar_behavior_always_visible">Always visible</string>
+    <string name="toolbar_behavior_always_visible_desc">Keep both top and bottom bars visible at all times</string>
+    <string name="toolbar_behavior_top_always">Top bar always visible</string>
+    <string name="toolbar_behavior_top_always_desc">Keep top search bar visible while hiding bottom bar on scroll</string>
+    <string name="toolbar_behavior_bottom_always">Bottom bar always visible</string>
+    <string name="toolbar_behavior_bottom_always_desc">Keep bottom bar visible while hiding top search bar on scroll</string>
     <string name="appearance_tab_previews">Live tab previews</string>
     <string name="appearance_tab_previews_summary">Show page thumbnails on cards in All tabs</string>
     <string name="appearance_reading_time">Reading time estimate</string>

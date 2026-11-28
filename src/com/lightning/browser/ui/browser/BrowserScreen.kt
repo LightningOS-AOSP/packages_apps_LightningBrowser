@@ -314,6 +314,7 @@ fun BrowserScreen(
     onFindConsumed: () -> Unit = {},
     chromeVisible: Boolean = true,
     onChromeVisibleChange: (Boolean) -> Unit = {},
+    barScrollBehavior: BrowserStore.BarScrollBehavior = BrowserStore.BarScrollBehavior.HIDE_BOTH,
     recentSearches: List<String> = emptyList(),
     recentPages: List<RecentPage> = emptyList(),
     bookmarks: List<Bookmark> = emptyList(),
@@ -592,9 +593,16 @@ fun BrowserScreen(
     val fullscreen = (webViews[activeIndex]?.tag as? WebConfig)?.fullscreen
     BackHandler(enabled = fullscreen?.showing == true) { fullscreen?.hide() }
 
+    val topBarVisible = when (barScrollBehavior) {
+        BrowserStore.BarScrollBehavior.ALWAYS_VISIBLE,
+        BrowserStore.BarScrollBehavior.TOP_ALWAYS -> true
+        BrowserStore.BarScrollBehavior.HIDE_BOTH,
+        BrowserStore.BarScrollBehavior.BOTTOM_ALWAYS -> chromeVisible
+    }
+
     Column(modifier.fillMaxSize()) {
         AnimatedVisibility(
-            visible = chromeVisible || isEditing || finding,
+            visible = topBarVisible || isEditing || finding,
             enter = expandVertically(tween(200)) + fadeIn(tween(200)),
             exit = shrinkVertically(tween(200)) + fadeOut(tween(150)),
         ) {
@@ -629,8 +637,10 @@ fun BrowserScreen(
             address = displayAddress(activeTab?.url.orEmpty(), activeTab?.domain.orEmpty()),
             query = query,
             editing = isEditing,
+            browserVisible = browserVisible,
             onQueryChange = { query = it },
             onEditStart = {
+                if (!browserVisible) return@UrlRow
                 onClearEditFromHome()
                 editing = true
                 query = activeTab?.url.orEmpty()
@@ -740,6 +750,7 @@ fun BrowserScreen(
                             },
                             onScrolled = { scrollY, delta ->
                                 if (!isActive) return@BrowserPage
+                                if (barScrollBehavior == BrowserStore.BarScrollBehavior.ALWAYS_VISIBLE) return@BrowserPage
                                 val now = System.currentTimeMillis()
                                 if (now - lastToggle[0] > CHROME_SETTLE_MS && delta != 0) {
                                     if (scrollY <= 0) {
@@ -2439,6 +2450,7 @@ private fun UrlRow(
     address: String,
     query: String,
     editing: Boolean,
+    browserVisible: Boolean = true,
     onQueryChange: (String) -> Unit,
     onEditStart: () -> Unit,
     onCancel: () -> Unit,
@@ -2519,7 +2531,8 @@ private fun UrlRow(
             }
         } else {
             Surface(
-                onClick = onEditStart,
+                onClick = { if (browserVisible) onEditStart() },
+                enabled = browserVisible,
                 color = colors.surfaceContainerHigh,
                 shape = RoundedCornerShape(26.dp),
                 modifier = Modifier
