@@ -366,9 +366,11 @@ fun BrowserScreen(
         DohResolver.endpointFor(dnsProvider, customDnsUrl)
     }
 
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     LaunchedEffect(browserVisible) {
-        if (!browserVisible && editing) {
-            editing = false
+        if (!browserVisible) {
+            if (editing) editing = false
+            focusManager.clearFocus()
         }
     }
 
