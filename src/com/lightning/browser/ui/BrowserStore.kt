@@ -48,6 +48,9 @@ object BrowserStore {
     private const val KEY_HAPTIC_FEEDBACK = "haptic_feedback"
     private const val KEY_READING_TIME = "reading_time"
     private const val KEY_QUICK_ARC = "quick_arc_menu"
+    private const val KEY_QUICK_ARC_STYLE = "quick_arc_style"
+    private const val KEY_QUICK_ARC_SIZE = "quick_arc_size"
+    private const val KEY_QUICK_ARC_ITEMS = "quick_arc_items"
     private const val KEY_TAB_PREVIEWS = "tab_previews"
     private const val KEY_CLIPBOARD_PROMPT = "clipboard_url_prompt"
     private const val KEY_WAYBACK_FALLBACK = "wayback_fallback"
@@ -923,6 +926,62 @@ object BrowserStore {
         } else {
             prefs(context).edit().putString(KEY_PDF_POSITIONS, obj.toString()).apply()
         }
+    }
+
+    enum class QuickArcStyle { FILLED, HOLLOW }
+
+    enum class QuickArcSize(val scale: Float) {
+        SMALL(0.82f),
+        MEDIUM(1.0f),
+        LARGE(1.16f),
+    }
+
+    enum class QuickArcAction {
+        HOME,
+        TABS,
+        SETTINGS,
+        NEW_TAB,
+        BOOKMARKS,
+        HISTORY,
+        DOWNLOADS,
+        SAVED_PAGES,
+    }
+
+    val defaultQuickArcItems: List<QuickArcAction> = listOf(
+        QuickArcAction.HOME,
+        QuickArcAction.TABS,
+        QuickArcAction.SETTINGS,
+    )
+
+    fun loadQuickArcStyle(context: Context): QuickArcStyle {
+        val raw = prefs(context).getString(KEY_QUICK_ARC_STYLE, null)
+        return QuickArcStyle.entries.firstOrNull { it.name == raw } ?: QuickArcStyle.FILLED
+    }
+
+    fun saveQuickArcStyle(context: Context, style: QuickArcStyle) {
+        prefs(context).edit().putString(KEY_QUICK_ARC_STYLE, style.name).apply()
+    }
+
+    fun loadQuickArcSize(context: Context): QuickArcSize {
+        val raw = prefs(context).getString(KEY_QUICK_ARC_SIZE, null)
+        return QuickArcSize.entries.firstOrNull { it.name == raw } ?: QuickArcSize.MEDIUM
+    }
+
+    fun saveQuickArcSize(context: Context, size: QuickArcSize) {
+        prefs(context).edit().putString(KEY_QUICK_ARC_SIZE, size.name).apply()
+    }
+
+    fun loadQuickArcItems(context: Context): List<QuickArcAction> {
+        val raw = prefs(context).getString(KEY_QUICK_ARC_ITEMS, null) ?: return defaultQuickArcItems
+        val parsed = raw.split(",")
+            .mapNotNull { name -> QuickArcAction.entries.firstOrNull { it.name == name.trim() } }
+            .distinct()
+        return parsed.ifEmpty { defaultQuickArcItems }
+    }
+
+    fun saveQuickArcItems(context: Context, items: List<QuickArcAction>) {
+        val sanitized = items.distinct().ifEmpty { defaultQuickArcItems }
+        prefs(context).edit().putString(KEY_QUICK_ARC_ITEMS, sanitized.joinToString(",") { it.name }).apply()
     }
 
     fun loadPdfNightMode(context: Context): Boolean =

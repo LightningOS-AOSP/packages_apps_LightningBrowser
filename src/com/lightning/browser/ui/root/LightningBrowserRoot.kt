@@ -129,6 +129,7 @@ import com.lightning.browser.ui.settings.DownloadsScreen
 import com.lightning.browser.ui.settings.HistoryEntry
 import com.lightning.browser.ui.settings.HistoryScreen
 import com.lightning.browser.ui.settings.PrivacyScreen
+import com.lightning.browser.ui.settings.QuickArcSettingsScreen
 import com.lightning.browser.ui.settings.SearchEngine
 import com.lightning.browser.ui.settings.SearchEngineScreen
 import com.lightning.browser.ui.settings.SettingsRootScreen
@@ -159,7 +160,7 @@ data class DuplicateTabWarning(
 )
 
 enum class LightningScreen {
-    HOME, TABS, SAVED_PAGES, RECENTLY_CLOSED, PRINT, PDF_VIEWER, SETTINGS, APPEARANCE, CONTROLS, BROWSING, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, DOWNLOAD_SETTINGS, ABOUT, BOOKMARKS, HISTORY,
+    HOME, TABS, SAVED_PAGES, RECENTLY_CLOSED, PRINT, PDF_VIEWER, SETTINGS, APPEARANCE, CONTROLS, QUICK_ARC, BROWSING, DNS, PRIVACY, SEARCH_ENGINE, DOWNLOADS, DOWNLOAD_SETTINGS, ABOUT, BOOKMARKS, HISTORY,
     SITE_PERMISSIONS, BROWSER, STARTUP
 }
 
@@ -331,6 +332,9 @@ fun LightningBrowserRoot(
     var fingerprintLock by remember { mutableStateOf(BrowserStore.loadFingerprintLock(context)) }
     var hapticsEnabled by remember { mutableStateOf(BrowserStore.loadHapticFeedback(context)) }
     var quickArcEnabled by remember { mutableStateOf(BrowserStore.loadQuickArcEnabled(context)) }
+    var quickArcStyle by remember { mutableStateOf(BrowserStore.loadQuickArcStyle(context)) }
+    var quickArcSize by remember { mutableStateOf(BrowserStore.loadQuickArcSize(context)) }
+    var quickArcItems by remember { mutableStateOf(BrowserStore.loadQuickArcItems(context)) }
     var tabPreviewsEnabled by remember { mutableStateOf(BrowserStore.loadTabPreviewsEnabled(context)) }
     var readingTimeEnabled by remember { mutableStateOf(BrowserStore.loadReadingTimeEnabled(context)) }
     var waybackEnabled by remember { mutableStateOf(BrowserStore.loadWaybackEnabled(context)) }
@@ -501,6 +505,15 @@ fun LightningBrowserRoot(
     LaunchedEffect(quickArcEnabled) {
         if (!incognito) BrowserStore.saveQuickArcEnabled(context, quickArcEnabled)
         if (!quickArcEnabled) showQuickArc = false
+    }
+    LaunchedEffect(quickArcStyle) {
+        if (!incognito) BrowserStore.saveQuickArcStyle(context, quickArcStyle)
+    }
+    LaunchedEffect(quickArcSize) {
+        if (!incognito) BrowserStore.saveQuickArcSize(context, quickArcSize)
+    }
+    LaunchedEffect(quickArcItems) {
+        if (!incognito) BrowserStore.saveQuickArcItems(context, quickArcItems)
     }
     LaunchedEffect(tabPreviewsEnabled) {
         if (!incognito) BrowserStore.saveTabPreviewsEnabled(context, tabPreviewsEnabled)
@@ -1129,6 +1142,7 @@ fun LightningBrowserRoot(
                 navigateBack(LightningScreen.HOME)
             }
             LightningScreen.SITE_PERMISSIONS -> navigateBack(LightningScreen.PRIVACY)
+            LightningScreen.QUICK_ARC -> navigateBack(LightningScreen.CONTROLS)
             LightningScreen.SAVED_PAGES, LightningScreen.RECENTLY_CLOSED -> navigateBack(LightningScreen.TABS)
             LightningScreen.PRINT -> {
                 val returnToPdf = printPdfFile != null
@@ -1610,10 +1624,35 @@ fun LightningBrowserRoot(
                     )
                     LightningScreen.CONTROLS -> ControlsScreen(
                         hapticsEnabled = hapticsEnabled,
-                        quickArcEnabled = quickArcEnabled,
+                        quickArcSummary = if (!quickArcEnabled) {
+                            stringResource(R.string.quick_arc_summary_off)
+                        } else {
+                            stringResource(
+                                R.string.quick_arc_summary_on,
+                                quickArcItems.size,
+                                stringResource(
+                                    if (quickArcStyle == BrowserStore.QuickArcStyle.HOLLOW) {
+                                        R.string.quick_arc_style_hollow
+                                    } else {
+                                        R.string.quick_arc_style_filled
+                                    },
+                                ),
+                            )
+                        },
                         onHapticsChange = { hapticsEnabled = it },
-                        onQuickArcChange = { quickArcEnabled = it },
+                        onOpenQuickArc = { navigateTo(LightningScreen.QUICK_ARC) },
                         onBack = { navigateBack(LightningScreen.SETTINGS) },
+                    )
+                    LightningScreen.QUICK_ARC -> QuickArcSettingsScreen(
+                        enabled = quickArcEnabled,
+                        style = quickArcStyle,
+                        arcSize = quickArcSize,
+                        items = quickArcItems,
+                        onEnabledChange = { quickArcEnabled = it },
+                        onStyleChange = { quickArcStyle = it },
+                        onSizeChange = { quickArcSize = it },
+                        onItemsChange = { quickArcItems = it },
+                        onBack = { navigateBack(LightningScreen.CONTROLS) },
                     )
                     LightningScreen.BROWSING -> BrowsingScreen(
                         duplicateTabWarningEnabled = duplicateTabWarningEnabled,
@@ -1810,31 +1849,40 @@ fun LightningBrowserRoot(
             }
             QuickArcMenu(
                 visible = showQuickArc,
+                style = quickArcStyle,
+                arcSize = quickArcSize,
+                items = quickArcItems,
                 onDismiss = { showQuickArc = false },
-                onHome = {
+                onSelectAction = { action ->
                     showQuickArc = false
                     if (screen == LightningScreen.BROWSER) {
                         captureTabThumbnail(activeIndex)
                     }
-                    screenBackStack.clear()
-                    screen = LightningScreen.HOME
-                },
-                onTabs = {
-                    showQuickArc = false
-                    if (screen != LightningScreen.TABS) {
-                        tabsReturnScreen = screen
-                        if (screen == LightningScreen.BROWSER) {
-                            captureTabThumbnail(activeIndex)
+                    when (action) {
+                        BrowserStore.QuickArcAction.HOME -> {
+                            screenBackStack.clear()
+                            screen = LightningScreen.HOME
                         }
-                        screen = LightningScreen.TABS
+                        BrowserStore.QuickArcAction.TABS -> {
+                            if (screen != LightningScreen.TABS) {
+                                tabsReturnScreen = screen
+                                screen = LightningScreen.TABS
+                            }
+                        }
+                        BrowserStore.QuickArcAction.SETTINGS -> navigateTo(LightningScreen.SETTINGS)
+                        BrowserStore.QuickArcAction.NEW_TAB -> {
+                            tabs.add(BrowserTab(title = "New tab", domain = "", private = incognito))
+                            activeIndex = tabs.size - 1
+                            screenBackStack.clear()
+                            editStartedFromHome = true
+                            addressFocusSignal++
+                            screen = LightningScreen.BROWSER
+                        }
+                        BrowserStore.QuickArcAction.BOOKMARKS -> navigateTo(LightningScreen.BOOKMARKS)
+                        BrowserStore.QuickArcAction.HISTORY -> navigateTo(LightningScreen.HISTORY)
+                        BrowserStore.QuickArcAction.DOWNLOADS -> navigateTo(LightningScreen.DOWNLOADS)
+                        BrowserStore.QuickArcAction.SAVED_PAGES -> navigateTo(LightningScreen.SAVED_PAGES)
                     }
-                },
-                onSettings = {
-                    showQuickArc = false
-                    if (screen == LightningScreen.BROWSER) {
-                        captureTabThumbnail(activeIndex)
-                    }
-                    navigateTo(LightningScreen.SETTINGS)
                 },
             )
             AppMenuSheet(

@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -17,9 +19,9 @@ import com.lightning.browser.ui.components.GroupedColumn
 @Composable
 fun ControlsScreen(
     hapticsEnabled: Boolean,
-    quickArcEnabled: Boolean,
+    quickArcSummary: String,
     onHapticsChange: (Boolean) -> Unit,
-    onQuickArcChange: (Boolean) -> Unit,
+    onOpenQuickArc: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -41,12 +43,13 @@ fun ControlsScreen(
                     onCheckedChange = onHapticsChange,
                     shape = shape,
                 )
-                else -> SettingsSwitchRow(
+                else -> SettingsRow(
+                    icon = Icons.Filled.FlashOn,
                     title = stringResource(R.string.appearance_quick_arc),
-                    summary = stringResource(R.string.appearance_quick_arc_summary),
-                    checked = quickArcEnabled,
-                    onCheckedChange = onQuickArcChange,
+                    summary = quickArcSummary,
+                    onClick = onOpenQuickArc,
                     shape = shape,
+                    index = i,
                 )
             }
         }

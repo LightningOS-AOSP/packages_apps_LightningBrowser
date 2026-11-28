@@ -281,6 +281,23 @@
     <string name="quick_arc_home">Home</string>
     <string name="quick_arc_tabs">All tabs</string>
     <string name="quick_arc_settings">Settings</string>
+    <string name="quick_arc_new_tab">New tab</string>
+    <string name="quick_arc_bookmarks">Bookmarks</string>
+    <string name="quick_arc_history">History</string>
+    <string name="quick_arc_downloads">Downloads</string>
+    <string name="quick_arc_saved_pages">Saved pages</string>
+    <string name="quick_arc_summary_off">Off</string>
+    <string name="quick_arc_summary_on">%1$d items · %2$s</string>
+    <string name="quick_arc_enable_title">Enable Quick Arc menu</string>
+    <string name="quick_arc_style_title">Style</string>
+    <string name="quick_arc_style_filled">Filled dome</string>
+    <string name="quick_arc_style_hollow">Hollow half circle</string>
+    <string name="quick_arc_size_title">Size</string>
+    <string name="quick_arc_size_small">Small</string>
+    <string name="quick_arc_size_medium">Medium</string>
+    <string name="quick_arc_size_large">Large</string>
+    <string name="quick_arc_items_title">Menu items</string>
+    <string name="quick_arc_items_subtitle">Choose up to 6 shortcuts (at least 1 required)</string>
 
     <string name="controls_title">Controls and gestures</string>
     <string name="appearance_haptics">Haptic feedback</string>

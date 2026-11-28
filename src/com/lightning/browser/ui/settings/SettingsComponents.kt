@@ -152,10 +152,18 @@ fun SettingsSwitchRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     shape: Shape = ExpressiveShapes.grouped(0, 1),
+    enabled: Boolean = true,
 ) {
     val colors = LightningTheme.colors
     val haptics = rememberLightningHaptics()
     Surface(
+        onClick = {
+            if (enabled) {
+                haptics.tick()
+                onCheckedChange(!checked)
+            }
+        },
+        enabled = enabled,
         shape = shape,
         color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
@@ -168,17 +176,20 @@ fun SettingsSwitchRow(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = colors.onSurface,
+                    color = if (enabled) colors.onSurface else colors.onSurfaceVariant,
                 )
-                Text(
-                    text = summary,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.onSurfaceVariant,
-                )
+                if (summary.isNotEmpty()) {
+                    Text(
+                        text = summary,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
             }
             Spacer(Modifier.width(12.dp))
             Switch(
                 checked = checked,
+                enabled = enabled,
                 onCheckedChange = {
                     haptics.tick()
                     onCheckedChange(it)
