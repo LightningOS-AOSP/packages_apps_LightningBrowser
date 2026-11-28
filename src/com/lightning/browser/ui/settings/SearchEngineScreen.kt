@@ -1,9 +1,12 @@
 package com.lightning.browser.ui.settings
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,24 +42,29 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
+import com.lightning.browser.ui.BrowserStore.SearchSuggestionSettings
 import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.rememberLightningHaptics
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SearchEngineScreen(
     activeEngineId: String,
     builtInEngine: SearchEngine,
     customEngines: List<CustomSearchEngine>,
+    suggestionSettings: SearchSuggestionSettings,
     onSelectBuiltIn: (SearchEngine) -> Unit,
     onSelectCustom: (CustomSearchEngine) -> Unit,
     onAddCustomEngine: (name: String, url: String, keyword: String) -> Unit,
     onUpdateCustomEngine: (CustomSearchEngine) -> Unit,
     onDeleteCustomEngine: (String) -> Unit,
+    onSuggestionSettingsChange: (SearchSuggestionSettings) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -64,6 +72,7 @@ fun SearchEngineScreen(
     var editingEngine by remember { mutableStateOf<CustomSearchEngine?>(null) }
     var showAddDialog by remember { mutableStateOf(false) }
     var engineToDelete by remember { mutableStateOf<CustomSearchEngine?>(null) }
+    var showLearnMoreDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -125,6 +134,146 @@ fun SearchEngineScreen(
         GroupedColumn(1) { _, shape ->
             AddEngineRow(onClick = { showAddDialog = true }, shape = shape)
         }
+
+        Spacer(Modifier.height(24.dp))
+        SettingsSectionHeader(title = stringResource(R.string.search_suggestions_header))
+        Spacer(Modifier.height(10.dp))
+        GroupedColumn(3) { i, shape ->
+            when (i) {
+                0 -> SettingsSwitchRow(
+                    title = stringResource(R.string.search_suggestions_show),
+                    summary = "",
+                    checked = suggestionSettings.showSearchSuggestions,
+                    onCheckedChange = {
+                        onSuggestionSettingsChange(suggestionSettings.copy(showSearchSuggestions = it))
+                    },
+                    shape = shape,
+                )
+                1 -> SettingsSwitchRow(
+                    title = stringResource(R.string.search_suggestions_before_history),
+                    summary = "",
+                    checked = suggestionSettings.searchSuggestionsBeforeHistory,
+                    enabled = suggestionSettings.showSearchSuggestions,
+                    onCheckedChange = {
+                        onSuggestionSettingsChange(suggestionSettings.copy(searchSuggestionsBeforeHistory = it))
+                    },
+                    shape = shape,
+                )
+                else -> SettingsSwitchRow(
+                    title = stringResource(R.string.search_suggestions_private),
+                    summary = "",
+                    checked = suggestionSettings.searchSuggestionsInPrivate,
+                    enabled = suggestionSettings.showSearchSuggestions,
+                    onCheckedChange = {
+                        onSuggestionSettingsChange(suggestionSettings.copy(searchSuggestionsInPrivate = it))
+                    },
+                    shape = shape,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(24.dp))
+        SettingsSectionHeader(title = stringResource(R.string.address_bar_header))
+        Spacer(Modifier.height(4.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 4.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.address_bar_subtitle),
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.onSurfaceVariant,
+            )
+            Text(
+                text = stringResource(R.string.address_bar_learn_more),
+                style = MaterialTheme.typography.labelMedium.copy(
+                    textDecoration = TextDecoration.Underline,
+                ),
+                color = colors.primary,
+                modifier = Modifier.clickable { showLearnMoreDialog = true },
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        GroupedColumn(7) { i, shape ->
+            when (i) {
+                0 -> SettingsSwitchRow(
+                    title = stringResource(R.string.address_bar_suggest_history),
+                    summary = "",
+                    checked = suggestionSettings.suggestHistory,
+                    onCheckedChange = {
+                        onSuggestionSettingsChange(suggestionSettings.copy(suggestHistory = it))
+                    },
+                    shape = shape,
+                )
+                1 -> SettingsSwitchRow(
+                    title = stringResource(R.string.address_bar_suggest_bookmarks),
+                    summary = "",
+                    checked = suggestionSettings.suggestBookmarks,
+                    onCheckedChange = {
+                        onSuggestionSettingsChange(suggestionSettings.copy(suggestBookmarks = it))
+                    },
+                    shape = shape,
+                )
+                2 -> SettingsSwitchRow(
+                    title = stringResource(R.string.address_bar_suggest_clipboard),
+                    summary = "",
+                    checked = suggestionSettings.suggestClipboard,
+                    onCheckedChange = {
+                        onSuggestionSettingsChange(suggestionSettings.copy(suggestClipboard = it))
+                    },
+                    shape = shape,
+                )
+                3 -> SettingsSwitchRow(
+                    title = stringResource(R.string.address_bar_suggest_open_tabs),
+                    summary = "",
+                    checked = suggestionSettings.suggestOpenTabs,
+                    onCheckedChange = {
+                        onSuggestionSettingsChange(suggestionSettings.copy(suggestOpenTabs = it))
+                    },
+                    shape = shape,
+                )
+                4 -> SettingsSwitchRow(
+                    title = stringResource(R.string.address_bar_suggest_shortcuts),
+                    summary = "",
+                    checked = suggestionSettings.suggestShortcuts,
+                    onCheckedChange = {
+                        onSuggestionSettingsChange(suggestionSettings.copy(suggestShortcuts = it))
+                    },
+                    shape = shape,
+                )
+                5 -> SettingsSwitchRow(
+                    title = stringResource(R.string.address_bar_suggest_recent_searches),
+                    summary = "",
+                    checked = suggestionSettings.suggestRecentSearches,
+                    onCheckedChange = {
+                        onSuggestionSettingsChange(suggestionSettings.copy(suggestRecentSearches = it))
+                    },
+                    shape = shape,
+                )
+                else -> SettingsSwitchRow(
+                    title = stringResource(R.string.address_bar_suggest_search_engines),
+                    summary = "",
+                    checked = suggestionSettings.suggestSearchEngines,
+                    onCheckedChange = {
+                        onSuggestionSettingsChange(suggestionSettings.copy(suggestSearchEngines = it))
+                    },
+                    shape = shape,
+                )
+            }
+        }
+    }
+
+    if (showLearnMoreDialog) {
+        AlertDialog(
+            onDismissRequest = { showLearnMoreDialog = false },
+            title = { Text(stringResource(R.string.address_bar_header)) },
+            text = { Text(stringResource(R.string.address_bar_learn_more_body)) },
+            confirmButton = {
+                TextButton(onClick = { showLearnMoreDialog = false }) {
+                    Text(stringResource(android.R.string.ok))
+                }
+            },
+        )
     }
 
     if (showAddDialog) {

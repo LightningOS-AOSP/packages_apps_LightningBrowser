@@ -52,6 +52,16 @@ object BrowserStore {
     private const val KEY_QUICK_ARC_SIZE = "quick_arc_size"
     private const val KEY_QUICK_ARC_ITEMS = "quick_arc_items"
     private const val KEY_BAR_SCROLL_BEHAVIOR = "bar_scroll_behavior"
+    private const val KEY_SHOW_SEARCH_SUGGESTIONS = "show_search_suggestions"
+    private const val KEY_SEARCH_SUGGESTIONS_BEFORE_HISTORY = "search_suggestions_before_history"
+    private const val KEY_SEARCH_SUGGESTIONS_IN_PRIVATE = "search_suggestions_in_private"
+    private const val KEY_SUGGEST_HISTORY = "suggest_history"
+    private const val KEY_SUGGEST_BOOKMARKS = "suggest_bookmarks"
+    private const val KEY_SUGGEST_CLIPBOARD = "suggest_clipboard"
+    private const val KEY_SUGGEST_OPEN_TABS = "suggest_open_tabs"
+    private const val KEY_SUGGEST_SHORTCUTS = "suggest_shortcuts"
+    private const val KEY_SUGGEST_RECENT_SEARCHES = "suggest_recent_searches"
+    private const val KEY_SUGGEST_SEARCH_ENGINES = "suggest_search_engines"
     private const val KEY_TAB_PREVIEWS = "tab_previews"
     private const val KEY_CLIPBOARD_PROMPT = "clipboard_url_prompt"
     private const val KEY_WAYBACK_FALLBACK = "wayback_fallback"
@@ -999,6 +1009,50 @@ object BrowserStore {
 
     fun saveBarScrollBehavior(context: Context, behavior: BarScrollBehavior) {
         prefs(context).edit().putString(KEY_BAR_SCROLL_BEHAVIOR, behavior.name).apply()
+    }
+
+    data class SearchSuggestionSettings(
+        val showSearchSuggestions: Boolean = true,
+        val searchSuggestionsBeforeHistory: Boolean = true,
+        val searchSuggestionsInPrivate: Boolean = false,
+        val suggestHistory: Boolean = true,
+        val suggestBookmarks: Boolean = true,
+        val suggestClipboard: Boolean = true,
+        val suggestOpenTabs: Boolean = true,
+        val suggestShortcuts: Boolean = true,
+        val suggestRecentSearches: Boolean = true,
+        val suggestSearchEngines: Boolean = true,
+    )
+
+    fun loadSearchSuggestionSettings(context: Context): SearchSuggestionSettings {
+        val p = prefs(context)
+        return SearchSuggestionSettings(
+            showSearchSuggestions = p.getBoolean(KEY_SHOW_SEARCH_SUGGESTIONS, true),
+            searchSuggestionsBeforeHistory = p.getBoolean(KEY_SEARCH_SUGGESTIONS_BEFORE_HISTORY, true),
+            searchSuggestionsInPrivate = p.getBoolean(KEY_SEARCH_SUGGESTIONS_IN_PRIVATE, false),
+            suggestHistory = p.getBoolean(KEY_SUGGEST_HISTORY, true),
+            suggestBookmarks = p.getBoolean(KEY_SUGGEST_BOOKMARKS, true),
+            suggestClipboard = p.getBoolean(KEY_SUGGEST_CLIPBOARD, true),
+            suggestOpenTabs = p.getBoolean(KEY_SUGGEST_OPEN_TABS, true),
+            suggestShortcuts = p.getBoolean(KEY_SUGGEST_SHORTCUTS, true),
+            suggestRecentSearches = p.getBoolean(KEY_SUGGEST_RECENT_SEARCHES, true),
+            suggestSearchEngines = p.getBoolean(KEY_SUGGEST_SEARCH_ENGINES, true),
+        )
+    }
+
+    fun saveSearchSuggestionSettings(context: Context, settings: SearchSuggestionSettings) {
+        prefs(context).edit()
+            .putBoolean(KEY_SHOW_SEARCH_SUGGESTIONS, settings.showSearchSuggestions)
+            .putBoolean(KEY_SEARCH_SUGGESTIONS_BEFORE_HISTORY, settings.searchSuggestionsBeforeHistory)
+            .putBoolean(KEY_SEARCH_SUGGESTIONS_IN_PRIVATE, settings.searchSuggestionsInPrivate)
+            .putBoolean(KEY_SUGGEST_HISTORY, settings.suggestHistory)
+            .putBoolean(KEY_SUGGEST_BOOKMARKS, settings.suggestBookmarks)
+            .putBoolean(KEY_SUGGEST_CLIPBOARD, settings.suggestClipboard)
+            .putBoolean(KEY_SUGGEST_OPEN_TABS, settings.suggestOpenTabs)
+            .putBoolean(KEY_SUGGEST_SHORTCUTS, settings.suggestShortcuts)
+            .putBoolean(KEY_SUGGEST_RECENT_SEARCHES, settings.suggestRecentSearches)
+            .putBoolean(KEY_SUGGEST_SEARCH_ENGINES, settings.suggestSearchEngines)
+            .apply()
     }
 
     fun loadPdfNightMode(context: Context): Boolean =

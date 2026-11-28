@@ -212,6 +212,28 @@
     <string name="search_engine_delete">Delete</string>
     <string name="search_engine_edit">Edit</string>
 
+    <string name="search_suggestions_header">Search engine suggestions</string>
+    <string name="search_suggestions_show">Show search suggestions</string>
+    <string name="search_suggestions_before_history">Show search suggestions before browsing history in address bar results</string>
+    <string name="search_suggestions_private">Search suggestions in private windows</string>
+    <string name="address_bar_header">Address Bar</string>
+    <string name="address_bar_subtitle">Choose which suggestions display in your address bar</string>
+    <string name="address_bar_learn_more">Learn more</string>
+    <string name="address_bar_learn_more_body">Your address bar can suggest results from your browsing history, bookmarks, clipboard links, open tabs, pinned shortcuts, recent searches and alternative search engines. When search suggestions are enabled, typed queries are sent to your active search engine for live autocomplete.</string>
+    <string name="address_bar_suggest_history">Browsing history</string>
+    <string name="address_bar_suggest_bookmarks">Bookmarks</string>
+    <string name="address_bar_suggest_clipboard">Clipboard</string>
+    <string name="address_bar_suggest_open_tabs">Open tabs</string>
+    <string name="address_bar_suggest_shortcuts">Shortcuts</string>
+    <string name="address_bar_suggest_recent_searches">Recent searches</string>
+    <string name="address_bar_suggest_search_engines">Suggest search engines to use</string>
+    <string name="suggestion_switch_to_tab">Switch to tab · %1$s</string>
+    <string name="suggestion_bookmark">Bookmark · %1$s</string>
+    <string name="suggestion_shortcut">Shortcut · %1$s</string>
+    <string name="suggestion_recent_search">Recent search</string>
+    <string name="suggestion_search_with">Search with %1$s</string>
+    <string name="suggestion_search_engines_header">Search with</string>
+
     <string name="downloads_title">Downloads</string>
     <string name="downloads_group_today">Today</string>
     <string name="downloads_group_yesterday">Yesterday</string>
