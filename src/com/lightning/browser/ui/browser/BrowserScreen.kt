@@ -1994,6 +1994,9 @@ private fun BrowserPage(
                     settings.setSaveFormData(false)
                     settings.cacheMode = WebSettings.LOAD_NO_CACHE
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
+                } else {
+                    CookieManager.getInstance().setAcceptCookie(true)
+                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 }
                 setBackgroundColor(android.graphics.Color.WHITE)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -2336,6 +2339,9 @@ private fun BrowserPage(
 
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
+                        if (!tab.private) {
+                            runCatching { CookieManager.getInstance().flush() }
+                        }
                         lastReadingTimeUrl = url
                         scheduleReadingTime(view, url)
                         if (config.desktopMode && view != null) {

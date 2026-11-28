@@ -600,8 +600,16 @@ fun LightningBrowserRoot(
                 if (screen == LightningScreen.BROWSER) {
                     captureTabThumbnail(activeIndex)
                 }
+                if (!incognito) {
+                    runCatching { CookieManager.getInstance().flush() }
+                }
             }
-            if (event == Lifecycle.Event.ON_STOP && fingerprintLock) locked = true
+            if (event == Lifecycle.Event.ON_STOP) {
+                if (!incognito) {
+                    runCatching { CookieManager.getInstance().flush() }
+                }
+                if (fingerprintLock) locked = true
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

@@ -41,6 +41,16 @@ class MainActivity : ComponentActivity() {
         cleanupOrphanedPrivateDownloads()
     }
 
+    override fun onPause() {
+        super.onPause()
+        runCatching { android.webkit.CookieManager.getInstance().flush() }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        runCatching { android.webkit.CookieManager.getInstance().flush() }
+    }
+
     private fun cleanupOrphanedPrivateDownloads() {
         if (!BrowserStore.loadDeletePrivateDownloads(this)) return
         val am = getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
