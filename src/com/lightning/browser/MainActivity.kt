@@ -6,6 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
+import android.webkit.CookieManager
+import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +28,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        CookieManager.getInstance().setAcceptCookie(true)
+        WebView.startSafeBrowsing(this, null)
         BrowserDownloads.cleanupOldPreviewCache(this)
         handleIntent(intent)
         setContent {
@@ -43,12 +47,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        runCatching { android.webkit.CookieManager.getInstance().flush() }
+        runCatching { CookieManager.getInstance().flush() }
     }
 
     override fun onStop() {
         super.onStop()
-        runCatching { android.webkit.CookieManager.getInstance().flush() }
+        runCatching { CookieManager.getInstance().flush() }
     }
 
     private fun cleanupOrphanedPrivateDownloads() {

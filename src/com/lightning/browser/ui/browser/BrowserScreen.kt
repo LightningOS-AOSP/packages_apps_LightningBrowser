@@ -1984,14 +1984,15 @@ private fun BrowserPage(
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.allowContentAccess = true
-                settings.allowFileAccess = true
+                settings.allowFileAccess = false
                 settings.setSupportZoom(true)
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
+                @Suppress("DEPRECATION")
+                settings.setSaveFormData(false)
                 if (tab.private) {
-                    settings.setSaveFormData(false)
                     settings.cacheMode = WebSettings.LOAD_NO_CACHE
                     CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
                 } else {
