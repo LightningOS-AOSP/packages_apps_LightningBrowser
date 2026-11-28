@@ -176,6 +176,56 @@ private val IMAGE_FIT_SCRIPT = """
         }
     })();
 """.trimIndent()
+
+private val ENABLE_ZOOM_SCRIPT = """
+    (function() {
+        if (!document || (document.contentType && document.contentType.startsWith('image/'))) return;
+        function allowZoom() {
+            var metas = document.querySelectorAll('meta[name="viewport"]');
+            for (var i = 0; i < metas.length; i++) {
+                var m = metas[i];
+                var c = m.getAttribute('content') || '';
+                var updated = c
+                    .replace(/user-scalable\s*=\s*(no|0)/gi, 'user-scalable=yes')
+                    .replace(/maximum-scale\s*=\s*[0-9.]+/gi, 'maximum-scale=10.0')
+                    .replace(/minimum-scale\s*=\s*[0-9.]+/gi, 'minimum-scale=0.25');
+                if (!/user-scalable/i.test(updated)) {
+                    updated += (updated ? ', ' : '') + 'user-scalable=yes';
+                }
+                if (!/maximum-scale/i.test(updated)) {
+                    updated += (updated ? ', ' : '') + 'maximum-scale=10.0';
+                }
+                if (!/minimum-scale/i.test(updated)) {
+                    updated += (updated ? ', ' : '') + 'minimum-scale=0.25';
+                }
+                if (c !== updated) {
+                    m.setAttribute('content', updated);
+                }
+            }
+        }
+        allowZoom();
+        if (!document.getElementById('_lightning_zoom_style')) {
+            var style = document.createElement('style');
+            style.id = '_lightning_zoom_style';
+            style.textContent = 'html, body { touch-action: auto !important; }';
+            var target = document.head || document.documentElement;
+            if (target) target.appendChild(style);
+        }
+        if (!window._lightningZoomObserver && typeof MutationObserver !== 'undefined') {
+            var root = document.head || document.documentElement;
+            if (root) {
+                window._lightningZoomObserver = new MutationObserver(allowZoom);
+                window._lightningZoomObserver.observe(root, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    attributeFilter: ['content']
+                });
+            }
+        }
+    })();
+""".trimIndent()
+
 private fun desktopScale(webView: WebView): Float {
     val density = webView.resources.displayMetrics.density.coerceAtLeast(1f)
     val widthPx = if (webView.width > 0) webView.width else webView.resources.displayMetrics.widthPixels
@@ -187,7 +237,7 @@ private fun desktopViewportScript(webView: WebView): String {
     val formattedScale = String.format(java.util.Locale.US, "%.3f", desktopScale(webView))
     return """
         (function() {
-            var targetContent = 'width=1280, initial-scale=$formattedScale';
+            var targetContent = 'width=1280, initial-scale=$formattedScale, minimum-scale=0.1, maximum-scale=10.0, user-scalable=yes';
             function enforce() {
                 var metas = document.querySelectorAll('meta[name="viewport"]');
                 for (var i = 1; i < metas.length; i++) {
@@ -226,8 +276,9 @@ private fun applyDesktopMode(webView: WebView, config: WebConfig, enabled: Boole
     if (ua != null) {
         webView.settings.userAgentString = ua
     }
-    webView.settings.useWideViewPort = enabled
-    webView.settings.loadWithOverviewMode = enabled
+    webView.settings.useWideViewPort = true
+    webView.settings.loadWithOverviewMode = true
+    webView.settings.setSupportZoom(true)
     webView.settings.builtInZoomControls = true
     webView.settings.displayZoomControls = false
     webView.setInitialScale(if (enabled) (desktopScale(webView) * 100f).toInt().coerceIn(20, 100) else 0)
@@ -1866,6 +1917,11 @@ private fun BrowserPage(
                 settings.domStorageEnabled = true
                 settings.allowContentAccess = true
                 settings.allowFileAccess = true
+                settings.setSupportZoom(true)
+                settings.builtInZoomControls = true
+                settings.displayZoomControls = false
+                settings.useWideViewPort = true
+                settings.loadWithOverviewMode = true
                 if (tab.private) {
                     settings.setSaveFormData(false)
                     settings.cacheMode = WebSettings.LOAD_NO_CACHE
@@ -1927,6 +1983,9 @@ private fun BrowserPage(
                 webChromeClient = object : WebChromeClient() {
                     override fun onProgressChanged(view: WebView?, newProgress: Int) {
                         config.onProgress(newProgress)
+                        if (newProgress >= 25 && view != null && !config.desktopMode) {
+                            view.evaluateJavascript(ENABLE_ZOOM_SCRIPT, null)
+                        }
                     }
 
                     override fun onJsAlert(view: WebView?, url: String?, message: String?, result: JsResult?): Boolean {
@@ -2132,6 +2191,8 @@ private fun BrowserPage(
                         config.onNavChange(view?.canGoBack() ?: false, view?.canGoForward() ?: false)
                         if (config.desktopMode && view != null) {
                             view.evaluateJavascript(desktopViewportScript(view), null)
+                        } else {
+                            view?.evaluateJavascript(ENABLE_ZOOM_SCRIPT, null)
                         }
                         view?.evaluateJavascript(IMAGE_FIT_SCRIPT, null)
                         if (url != null && (url.startsWith("http://", true) || url.startsWith("https://", true))) {
@@ -2161,6 +2222,8 @@ private fun BrowserPage(
                         super.onPageCommitVisible(view, url)
                         if (config.desktopMode && view != null) {
                             view.evaluateJavascript(desktopViewportScript(view), null)
+                        } else {
+                            view?.evaluateJavascript(ENABLE_ZOOM_SCRIPT, null)
                         }
                         view?.post { config.onNavChange(view.canGoBack(), view.canGoForward()) }
                         view?.invalidate()
@@ -2196,6 +2259,8 @@ private fun BrowserPage(
                         scheduleReadingTime(view, url)
                         if (config.desktopMode && view != null) {
                             view.evaluateJavascript(desktopViewportScript(view), null)
+                        } else {
+                            view?.evaluateJavascript(ENABLE_ZOOM_SCRIPT, null)
                         }
                         view?.evaluateJavascript(IMAGE_FIT_SCRIPT, null)
                         if (url != null && (url.startsWith("http://", true) || url.startsWith("https://", true))) {
