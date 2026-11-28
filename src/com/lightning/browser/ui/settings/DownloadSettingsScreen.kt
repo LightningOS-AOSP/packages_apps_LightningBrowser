@@ -113,6 +113,17 @@ fun DownloadSettingsScreen(
     val systemDefaults = remember(rules) {
         rules.associate { it.key to AppHandlerResolver.resolveSystemDefault(context, it.mimeOrScheme) }
     }
+    var isDefaultPdf by remember { mutableStateOf(AppHandlerResolver.isDefaultPdfViewer(context)) }
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                isDefaultPdf = AppHandlerResolver.isDefaultPdfViewer(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     Column(
         modifier = modifier
@@ -124,7 +135,7 @@ fun DownloadSettingsScreen(
         SettingsHeader(stringResource(R.string.dl_settings_title), onBack)
         Spacer(Modifier.height(8.dp))
 
-        GroupedColumn(3) { i, shape ->
+        GroupedColumn(4) { i, shape ->
             when (i) {
                 0 -> SettingsRow(
                     icon = Icons.Filled.FolderOpen,
@@ -145,12 +156,22 @@ fun DownloadSettingsScreen(
                     onCheckedChange = onAskBeforeDownloadChange,
                     shape = shape,
                 )
-                else -> SettingsSwitchRow(
+                2 -> SettingsSwitchRow(
                     title = stringResource(R.string.dl_delete_private),
                     summary = stringResource(R.string.dl_delete_private_summary),
                     checked = deletePrivateOnClose,
                     onCheckedChange = onDeletePrivateOnCloseChange,
                     shape = shape,
+                )
+                else -> SettingsRow(
+                    icon = Icons.Outlined.PictureAsPdf,
+                    title = stringResource(R.string.pdf_viewer_default_title),
+                    summary = stringResource(
+                        if (isDefaultPdf) R.string.pdf_viewer_default_active else R.string.pdf_viewer_default_inactive,
+                    ),
+                    onClick = { AppHandlerResolver.openDefaultPdfSettings(context) },
+                    shape = shape,
+                    index = i,
                 )
             }
         }

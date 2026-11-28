@@ -966,6 +966,38 @@ object BrowserDownloads {
         }
     }
 
+    fun copyUriToCacheFile(
+        context: Context,
+        uri: Uri,
+        fileName: String,
+        onComplete: (File?) -> Unit,
+    ) {
+        val appContext = context.applicationContext
+        val cleanName = sanitize(fileName)
+        val previewDir = File(appContext.cacheDir, "preview").apply { if (!exists()) mkdirs() }
+        val targetFile = File(previewDir, "${System.currentTimeMillis()}_$cleanName")
+        val mainHandler = Handler(Looper.getMainLooper())
+        executor.execute {
+            val result: File? = runCatching {
+                val input = if (uri.scheme.equals("file", ignoreCase = true)) {
+                    val path = uri.path ?: return@runCatching null
+                    java.io.FileInputStream(File(path))
+                } else {
+                    appContext.contentResolver.openInputStream(uri) ?: return@runCatching null
+                }
+                input.use { stream ->
+                    FileOutputStream(targetFile).use { out ->
+                        stream.copyTo(out)
+                        out.flush()
+                    }
+                }
+                targetFile
+            }.getOrNull()
+            if (result == null) runCatching { targetFile.delete() }
+            mainHandler.post { onComplete(result) }
+        }
+    }
+
     fun saveCachedFileToDownloads(
         context: Context,
         fileName: String,

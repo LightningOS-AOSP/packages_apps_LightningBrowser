@@ -94,6 +94,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.lightning.browser.IncognitoActivity
+import com.lightning.browser.IncomingPdfRequest
 import com.lightning.browser.R
 import com.lightning.browser.ui.BrowserStore
 import com.lightning.browser.ui.bar.LightningBottomBar
@@ -166,6 +167,7 @@ enum class LightningScreen {
 fun LightningBrowserRoot(
     incognito: Boolean = false,
     initialUrl: String? = null,
+    initialPdf: IncomingPdfRequest? = null,
 ) {
     val context = LocalContext.current
 
@@ -347,6 +349,7 @@ fun LightningBrowserRoot(
     val privateDownloadedFiles = remember { mutableStateListOf<String>() }
     var pdfTitle by remember { mutableStateOf("") }
     var pdfUrl by remember { mutableStateOf<String?>(null) }
+    var pdfContentUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var pdfUserAgent by remember { mutableStateOf<String?>(null) }
     var pdfFile by remember { mutableStateOf<java.io.File?>(null) }
     var pdfLoading by remember { mutableStateOf(false) }
@@ -748,6 +751,7 @@ fun LightningBrowserRoot(
     fun startPdfDownload(url: String, userAgent: String?, title: String, resetPage: Boolean) {
         pdfFile?.let { runCatching { it.delete() } }
         pdfUrl = url
+        pdfContentUri = null
         pdfUserAgent = userAgent
         pdfTitle = title
         pdfFile = null
@@ -764,6 +768,36 @@ fun LightningBrowserRoot(
             pdfCurrentPage = savedPage
         }
         BrowserDownloads.downloadToCacheFile(context, url, userAgent, title) { file ->
+            pdfLoading = false
+            if (file != null) {
+                pdfFile = file
+            } else {
+                pdfError = true
+            }
+        }
+    }
+
+    fun startPdfUriOpen(uri: android.net.Uri, title: String, resetPage: Boolean) {
+        pdfFile?.let { runCatching { it.delete() } }
+        val uriKey = uri.toString()
+        pdfUrl = uriKey
+        pdfContentUri = uri
+        pdfUserAgent = null
+        pdfTitle = title
+        pdfFile = null
+        pdfLoading = true
+        pdfError = false
+        pdfPageCount = 0
+        if (resetPage) {
+            val savedPage = if (incognito) {
+                1
+            } else {
+                BrowserStore.loadPdfPosition(context, BrowserStore.pdfPositionKey(uriKey, title))
+            }
+            pdfInitialPage = savedPage
+            pdfCurrentPage = savedPage
+        }
+        BrowserDownloads.copyUriToCacheFile(context, uri, title) { file ->
             pdfLoading = false
             if (file != null) {
                 pdfFile = file
@@ -1019,6 +1053,12 @@ fun LightningBrowserRoot(
         }
     }
 
+    LaunchedEffect(initialPdf?.token) {
+        val req = initialPdf ?: return@LaunchedEffect
+        navigateTo(LightningScreen.PDF_VIEWER)
+        startPdfUriOpen(req.uri, req.title, resetPage = true)
+    }
+
     val defaultBrowserLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { }
@@ -1100,6 +1140,7 @@ fun LightningBrowserRoot(
                 pdfFile?.let { runCatching { it.delete() } }
                 pdfFile = null
                 pdfUrl = null
+                pdfContentUri = null
                 pdfUserAgent = null
                 navigateBack(LightningScreen.BROWSER)
             }
@@ -1534,13 +1575,19 @@ fun LightningBrowserRoot(
                             openPdfPrintSheet(file)
                         },
                         onRetry = {
-                            val url = pdfUrl ?: return@PdfViewerScreen
-                            startPdfDownload(url, pdfUserAgent, pdfTitle, resetPage = false)
+                            val uri = pdfContentUri
+                            if (uri != null) {
+                                startPdfUriOpen(uri, pdfTitle, resetPage = false)
+                            } else {
+                                val url = pdfUrl ?: return@PdfViewerScreen
+                                startPdfDownload(url, pdfUserAgent, pdfTitle, resetPage = false)
+                            }
                         },
                         onBack = {
                             pdfFile?.let { runCatching { it.delete() } }
                             pdfFile = null
                             pdfUrl = null
+                            pdfContentUri = null
                             pdfUserAgent = null
                             navigateBack(LightningScreen.BROWSER)
                         },

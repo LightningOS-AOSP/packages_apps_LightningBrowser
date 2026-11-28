@@ -372,6 +372,9 @@
     <string name="pdf_viewer_info_source">Source</string>
     <string name="pdf_viewer_page_description">Page %1$d</string>
     <string name="pdf_viewer_print_sheet_title">Print PDF</string>
+    <string name="pdf_viewer_default_title">Default PDF viewer</string>
+    <string name="pdf_viewer_default_active">Lightning Browser is your default PDF app</string>
+    <string name="pdf_viewer_default_inactive">Tap to set Lightning as default for PDF files</string>
 
     <string name="clipboard_url_title">Link you copied</string>
     <string name="clipboard_url_home_subtitle">Open in new tab</string>

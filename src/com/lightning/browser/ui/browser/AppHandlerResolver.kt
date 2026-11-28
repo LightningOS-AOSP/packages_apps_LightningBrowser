@@ -185,4 +185,29 @@ object AppHandlerResolver {
             true
         }.getOrDefault(false)
     }
+
+    fun isDefaultPdfViewer(context: Context): Boolean {
+        val intent = buildProbeIntent(context, "application/pdf")
+        val resolved = resolveActivity(context.packageManager, intent) ?: return false
+        return resolved.activityInfo?.packageName == context.packageName
+    }
+
+    fun openDefaultPdfSettings(context: Context) {
+        val pkgUri = Uri.parse("package:${context.packageName}")
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Intent(android.provider.Settings.ACTION_APP_OPEN_BY_DEFAULT_SETTINGS, pkgUri)
+        } else {
+            Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkgUri)
+        }.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching {
+            context.startActivity(intent)
+        }.onFailure {
+            val fallback = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, pkgUri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            runCatching { context.startActivity(fallback) }
+        }
+    }
 }
