@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Surface
@@ -33,8 +34,10 @@ fun LightningBottomBar(
     onBookmark: () -> Unit = {},
     onMenu: () -> Unit = {},
     onNewTab: () -> Unit = {},
+    onLightningLongClick: (() -> Unit)? = null,
     backEnabled: Boolean = false,
     forwardEnabled: Boolean = false,
+    bookmarked: Boolean = false,
 ) {
     val colors = LightningTheme.colors
     Box(
@@ -66,11 +69,17 @@ fun LightningBottomBar(
                     enabled = backEnabled,
                 )
                 TonalIconButton(
-                    Icons.Filled.BookmarkBorder,
-                    stringResource(R.string.bar_bookmark),
-                    onBookmark,
+                    icon = if (bookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                    contentDescription = stringResource(R.string.bar_bookmark),
+                    onClick = onBookmark,
+                    tint = if (bookmarked) colors.primary else colors.onSurface,
                 )
-                MorphButton(onNewTab, stringResource(R.string.bar_new_tab), size = 60.dp)
+                MorphButton(
+                    onClick = onNewTab,
+                    contentDescription = stringResource(R.string.bar_new_tab),
+                    size = 60.dp,
+                    onLongClick = onLightningLongClick,
+                )
                 TonalIconButton(
                     Icons.Filled.MoreVert,
                     stringResource(R.string.bar_menu),

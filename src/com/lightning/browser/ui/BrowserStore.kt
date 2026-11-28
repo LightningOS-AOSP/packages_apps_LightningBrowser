@@ -1,14 +1,22 @@
 package com.lightning.browser.ui
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import com.lightning.browser.ui.home.PinnedSite
 import com.lightning.browser.ui.settings.Bookmark
+import com.lightning.browser.ui.settings.CustomSearchEngine
 import com.lightning.browser.ui.settings.DnsProvider
 import com.lightning.browser.ui.settings.HistoryEntry
 import com.lightning.browser.ui.settings.SearchEngine
 import com.lightning.browser.ui.settings.StartupBehavior
 import com.lightning.browser.ui.tabs.BrowserTab
+import com.lightning.browser.ui.tabs.ClosedTab
 import com.lightning.browser.ui.theme.ThemeMode
+import java.io.File
+import java.io.FileOutputStream
+import java.util.UUID
+import java.util.concurrent.Executors
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -24,6 +32,8 @@ object BrowserStore {
     private const val KEY_PINNED = "pinned_sites"
     private const val KEY_THEME = "theme_mode"
     private const val KEY_SEARCH_ENGINE = "search_engine"
+    private const val KEY_ACTIVE_SEARCH_ENGINE_ID = "active_search_engine_id"
+    private const val KEY_CUSTOM_SEARCH_ENGINES = "custom_search_engines"
     private const val KEY_DNS_PROVIDER = "dns_provider"
     private const val KEY_DNS_URL = "dns_url"
     private const val KEY_DNS_BYPASS = "dns_bypass"
@@ -34,6 +44,43 @@ object BrowserStore {
     private const val KEY_STARTUP = "startup_behavior"
     private const val KEY_HIDDEN_DOWNLOADS = "hidden_downloads"
     private const val KEY_DOWNLOADS = "browser_downloads"
+    private const val KEY_DEFAULT_BROWSER_PROMPTED = "default_browser_prompted"
+    private const val KEY_HAPTIC_FEEDBACK = "haptic_feedback"
+    private const val KEY_READING_TIME = "reading_time"
+    private const val KEY_QUICK_ARC = "quick_arc_menu"
+    private const val KEY_QUICK_ARC_STYLE = "quick_arc_style"
+    private const val KEY_QUICK_ARC_SIZE = "quick_arc_size"
+    private const val KEY_QUICK_ARC_ITEMS = "quick_arc_items"
+    private const val KEY_BAR_SCROLL_BEHAVIOR = "bar_scroll_behavior"
+    private const val KEY_SHOW_SEARCH_SUGGESTIONS = "show_search_suggestions"
+    private const val KEY_SEARCH_SUGGESTIONS_BEFORE_HISTORY = "search_suggestions_before_history"
+    private const val KEY_SEARCH_SUGGESTIONS_IN_PRIVATE = "search_suggestions_in_private"
+    private const val KEY_SUGGEST_HISTORY = "suggest_history"
+    private const val KEY_SUGGEST_BOOKMARKS = "suggest_bookmarks"
+    private const val KEY_SUGGEST_CLIPBOARD = "suggest_clipboard"
+    private const val KEY_SUGGEST_OPEN_TABS = "suggest_open_tabs"
+    private const val KEY_SUGGEST_SHORTCUTS = "suggest_shortcuts"
+    private const val KEY_SUGGEST_RECENT_SEARCHES = "suggest_recent_searches"
+    private const val KEY_SUGGEST_SEARCH_ENGINES = "suggest_search_engines"
+    private const val KEY_TAB_PREVIEWS = "tab_previews"
+    private const val KEY_CLIPBOARD_PROMPT = "clipboard_url_prompt"
+    private const val KEY_WAYBACK_FALLBACK = "wayback_fallback"
+    private const val KEY_DUPLICATE_TAB_WARNING = "duplicate_tab_warning"
+    private const val KEY_RECENTLY_CLOSED_ENABLED = "recently_closed_enabled"
+    private const val KEY_DL_SAVE_FOLDER = "dl_save_folder"
+    private const val KEY_DL_CUSTOM_PATH = "dl_custom_path"
+    private const val KEY_DL_ASK_BEFORE = "dl_ask_before"
+    private const val KEY_DL_DELETE_PRIVATE = "dl_delete_private"
+    private const val KEY_PRIVATE_DOWNLOADS = "pending_private_downloads"
+    private const val KEY_DL_OTHER_ASK = "dl_other_ask"
+    private const val KEY_DL_CONTENT_ACTIONS = "dl_content_actions"
+    private const val KEY_DISMISSED_CLIP_TIMESTAMP = "dismissed_clip_timestamp"
+    private const val KEY_CLOSED_TABS = "recently_closed_tabs"
+    private const val KEY_PDF_POSITIONS = "pdf_positions"
+    private const val KEY_PDF_NIGHT_MODE = "pdf_night_mode"
+    private const val MAX_PDF_POSITIONS = 50
+    const val MAX_CLOSED_TABS = 10
+    const val CLOSED_TAB_EXPIRY_MS = 24L * 60L * 60L * 1000L
     private const val MAX_HISTORY = 200
     private const val MAX_DOWNLOADS = 200
     private const val MAX_SEARCHES = 10
@@ -174,7 +221,56 @@ object BrowserStore {
             ?: SearchEngine.GOOGLE
 
     fun saveSearchEngine(context: Context, engine: SearchEngine) {
-        prefs(context).edit().putString(KEY_SEARCH_ENGINE, engine.name).apply()
+        prefs(context).edit()
+            .putString(KEY_SEARCH_ENGINE, engine.name)
+            .putString(KEY_ACTIVE_SEARCH_ENGINE_ID, engine.name)
+            .apply()
+    }
+
+    fun loadActiveSearchEngineId(context: Context): String =
+        prefs(context).getString(KEY_ACTIVE_SEARCH_ENGINE_ID, null)
+            ?: prefs(context).getString(KEY_SEARCH_ENGINE, SearchEngine.GOOGLE.name)
+            ?: SearchEngine.GOOGLE.name
+
+    fun saveActiveSearchEngineId(context: Context, id: String) {
+        val editor = prefs(context).edit().putString(KEY_ACTIVE_SEARCH_ENGINE_ID, id)
+        SearchEngine.entries.firstOrNull { it.name == id }?.let {
+            editor.putString(KEY_SEARCH_ENGINE, it.name)
+        }
+        editor.apply()
+    }
+
+    fun loadCustomSearchEngines(context: Context): List<CustomSearchEngine> {
+        val raw = prefs(context).getString(KEY_CUSTOM_SEARCH_ENGINES, null) ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            val list = mutableListOf<CustomSearchEngine>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(
+                    CustomSearchEngine(
+                        id = obj.getString("id"),
+                        name = obj.getString("name"),
+                        searchUrlFormat = obj.getString("searchUrl"),
+                        keyword = obj.optString("keyword", ""),
+                    )
+                )
+            }
+            list
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveCustomSearchEngines(context: Context, engines: List<CustomSearchEngine>) {
+        val array = JSONArray()
+        engines.forEach { engine ->
+            val obj = JSONObject()
+            obj.put("id", engine.id)
+            obj.put("name", engine.name)
+            obj.put("searchUrl", engine.searchUrlFormat)
+            obj.put("keyword", engine.keyword)
+            array.put(obj)
+        }
+        prefs(context).edit().putString(KEY_CUSTOM_SEARCH_ENGINES, array.toString()).apply()
     }
 
     fun loadDnsProvider(context: Context): DnsProvider =
@@ -213,6 +309,340 @@ object BrowserStore {
         prefs(context).edit().putBoolean(KEY_FINGERPRINT, value).apply()
     }
 
+    fun loadHapticFeedback(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_HAPTIC_FEEDBACK, true)
+
+    fun saveHapticFeedback(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_HAPTIC_FEEDBACK, value).apply()
+    }
+
+    fun loadReadingTimeEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_READING_TIME, false)
+
+    fun saveReadingTimeEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_READING_TIME, value).apply()
+    }
+
+    fun loadQuickArcEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_QUICK_ARC, true)
+
+    fun saveQuickArcEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_QUICK_ARC, value).apply()
+    }
+
+    fun loadTabPreviewsEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_TAB_PREVIEWS, true)
+
+    fun saveTabPreviewsEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_TAB_PREVIEWS, value).apply()
+    }
+
+    fun loadClipboardPromptEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_CLIPBOARD_PROMPT, true)
+
+    fun saveClipboardPromptEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CLIPBOARD_PROMPT, value).apply()
+    }
+
+    fun loadWaybackEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_WAYBACK_FALLBACK, true)
+
+    fun saveWaybackEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_WAYBACK_FALLBACK, value).apply()
+    }
+
+    fun loadDuplicateTabWarningEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DUPLICATE_TAB_WARNING, true)
+
+    fun saveDuplicateTabWarningEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DUPLICATE_TAB_WARNING, value).apply()
+    }
+
+    fun loadRecentlyClosedEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_RECENTLY_CLOSED_ENABLED, true)
+
+    fun saveRecentlyClosedEnabled(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_RECENTLY_CLOSED_ENABLED, value).apply()
+    }
+
+    enum class DownloadFolder(val labelRes: Int, val relativePath: String) {
+        DOWNLOADS(com.lightning.browser.R.string.dl_folder_downloads, "Download"),
+        DOWNLOADS_LIGHTNING(com.lightning.browser.R.string.dl_folder_downloads_lightning, "Download/Lightning"),
+        DOCUMENTS(com.lightning.browser.R.string.dl_folder_documents, "Documents"),
+        MUSIC(com.lightning.browser.R.string.dl_folder_music, "Music"),
+        MOVIES(com.lightning.browser.R.string.dl_folder_movies, "Movies"),
+        PICTURES(com.lightning.browser.R.string.dl_folder_pictures, "Pictures"),
+        CUSTOM(com.lightning.browser.R.string.dl_folder_custom, "Download"),
+    }
+
+    val ALLOWED_USER_DIR_ROOTS = listOf(
+        "Download",
+        "Documents",
+        "Music",
+        "Movies",
+        "Pictures",
+        "DCIM",
+        "Podcasts",
+        "Audiobooks",
+    )
+
+    data class PrivateDownloadRecord(
+        val tabId: String,
+        val fileName: String,
+        val relativePath: String,
+    )
+
+    enum class ContentAction(val labelRes: Int) {
+        ALWAYS_ASK(com.lightning.browser.R.string.dl_action_always_ask),
+        SAVE_FILE(com.lightning.browser.R.string.dl_action_save_file),
+        OPEN_IN_BROWSER(com.lightning.browser.R.string.dl_action_open_in_browser),
+        OPEN_WITH_APP(com.lightning.browser.R.string.dl_action_open_with_app),
+    }
+
+    data class ContentPreference(
+        val action: ContentAction,
+        val packageName: String? = null,
+        val className: String? = null,
+        val appLabel: String? = null,
+    )
+
+    data class ContentTypeRule(
+        val key: String,
+        val title: String,
+        val mimeOrScheme: String,
+        val defaultAction: ContentAction,
+        val supportedActions: List<ContentAction>,
+    )
+
+    val defaultContentTypeRules = listOf(
+        ContentTypeRule(
+            key = "avif",
+            title = "AV1 Image File (AVIF)",
+            mimeOrScheme = "image/avif",
+            defaultAction = ContentAction.OPEN_IN_BROWSER,
+            supportedActions = listOf(ContentAction.OPEN_IN_BROWSER, ContentAction.SAVE_FILE, ContentAction.ALWAYS_ASK),
+        ),
+        ContentTypeRule(
+            key = "xml",
+            title = "Extensible Markup Language (XML)",
+            mimeOrScheme = "text/xml",
+            defaultAction = ContentAction.SAVE_FILE,
+            supportedActions = listOf(ContentAction.SAVE_FILE, ContentAction.OPEN_IN_BROWSER, ContentAction.ALWAYS_ASK),
+        ),
+        ContentTypeRule(
+            key = "jpeg",
+            title = "Image Files (JPG, PNG, GIF)",
+            mimeOrScheme = "image/*",
+            defaultAction = ContentAction.OPEN_IN_BROWSER,
+            supportedActions = listOf(ContentAction.OPEN_IN_BROWSER, ContentAction.SAVE_FILE, ContentAction.ALWAYS_ASK),
+        ),
+        ContentTypeRule(
+            key = "jxl",
+            title = "JPEG XL Image File (JXL)",
+            mimeOrScheme = "image/jxl",
+            defaultAction = ContentAction.SAVE_FILE,
+            supportedActions = listOf(ContentAction.SAVE_FILE, ContentAction.ALWAYS_ASK),
+        ),
+        ContentTypeRule(
+            key = "mailto",
+            title = "mailto",
+            mimeOrScheme = "mailto",
+            defaultAction = ContentAction.OPEN_WITH_APP,
+            supportedActions = listOf(ContentAction.ALWAYS_ASK),
+        ),
+        ContentTypeRule(
+            key = "pdf",
+            title = "Portable Document Format (PDF)",
+            mimeOrScheme = "application/pdf",
+            defaultAction = ContentAction.OPEN_IN_BROWSER,
+            supportedActions = listOf(ContentAction.OPEN_IN_BROWSER, ContentAction.SAVE_FILE, ContentAction.ALWAYS_ASK),
+        ),
+        ContentTypeRule(
+            key = "svg",
+            title = "Scalable Vector Graphics (SVG)",
+            mimeOrScheme = "image/svg+xml",
+            defaultAction = ContentAction.SAVE_FILE,
+            supportedActions = listOf(ContentAction.SAVE_FILE, ContentAction.OPEN_IN_BROWSER, ContentAction.ALWAYS_ASK),
+        ),
+        ContentTypeRule(
+            key = "webp",
+            title = "WebP Image",
+            mimeOrScheme = "image/webp",
+            defaultAction = ContentAction.OPEN_IN_BROWSER,
+            supportedActions = listOf(ContentAction.OPEN_IN_BROWSER, ContentAction.SAVE_FILE, ContentAction.ALWAYS_ASK),
+        ),
+    )
+
+    fun loadDownloadFolder(context: Context): DownloadFolder =
+        DownloadFolder.entries.firstOrNull { it.name == prefs(context).getString(KEY_DL_SAVE_FOLDER, null) }
+            ?: DownloadFolder.DOWNLOADS
+
+    fun saveDownloadFolder(context: Context, folder: DownloadFolder) {
+        prefs(context).edit().putString(KEY_DL_SAVE_FOLDER, folder.name).apply()
+    }
+
+    fun loadCustomDownloadPath(context: Context): String =
+        prefs(context).getString(KEY_DL_CUSTOM_PATH, null)?.takeIf { isAllowedUserRelativePath(it) }
+            ?: "Download"
+
+    fun saveCustomDownloadPath(context: Context, relativePath: String) {
+        if (isAllowedUserRelativePath(relativePath)) {
+            prefs(context).edit().putString(KEY_DL_CUSTOM_PATH, relativePath.trim('/')).apply()
+        }
+    }
+
+    fun effectiveDownloadRelativePath(context: Context): String {
+        val folder = loadDownloadFolder(context)
+        return if (folder == DownloadFolder.CUSTOM) loadCustomDownloadPath(context) else folder.relativePath
+    }
+
+    fun isAllowedUserRelativePath(path: String): Boolean {
+        val clean = path.trim().trim('/')
+        if (clean.isEmpty() || clean.contains("..")) return false
+        return ALLOWED_USER_DIR_ROOTS.any { root ->
+            clean.equals(root, ignoreCase = true) || clean.startsWith("$root/", ignoreCase = true)
+        }
+    }
+
+    private fun privateDownloadsFile(context: Context): File =
+        File(context.applicationContext.filesDir, "private_downloads.json")
+
+    fun addPrivateDownload(context: Context, tabId: String, fileName: String, relativePath: String) {
+        if (fileName.isBlank()) return
+        val existing = loadPrivateDownloads(context).toMutableList()
+        if (existing.none { it.tabId == tabId && it.fileName == fileName && it.relativePath == relativePath }) {
+            existing.add(PrivateDownloadRecord(tabId, fileName, relativePath))
+            savePrivateDownloads(context, existing)
+        }
+    }
+
+    fun loadPrivateDownloads(context: Context): List<PrivateDownloadRecord> {
+        val file = privateDownloadsFile(context)
+        if (!file.exists()) return emptyList()
+        val raw = runCatching { file.readText() }.getOrNull() ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val obj = array.getJSONObject(i)
+                    add(
+                        PrivateDownloadRecord(
+                            tabId = obj.optString("tabId", ""),
+                            fileName = obj.getString("fileName"),
+                            relativePath = obj.optString("relativePath", "Download"),
+                        ),
+                    )
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun removePrivateDownloadsForTab(context: Context, tabId: String): List<PrivateDownloadRecord> {
+        val all = loadPrivateDownloads(context)
+        val removed = all.filter { it.tabId == tabId }
+        if (removed.isNotEmpty()) {
+            savePrivateDownloads(context, all.filterNot { it.tabId == tabId })
+        }
+        return removed
+    }
+
+    fun popAllPrivateDownloads(context: Context): List<PrivateDownloadRecord> {
+        val all = loadPrivateDownloads(context)
+        runCatching { privateDownloadsFile(context).delete() }
+        return all
+    }
+
+    private fun savePrivateDownloads(context: Context, list: List<PrivateDownloadRecord>) {
+        val file = privateDownloadsFile(context)
+        if (list.isEmpty()) {
+            runCatching { file.delete() }
+            return
+        }
+        val array = JSONArray()
+        list.forEach { rec ->
+            array.put(
+                JSONObject()
+                    .put("tabId", rec.tabId)
+                    .put("fileName", rec.fileName)
+                    .put("relativePath", rec.relativePath),
+            )
+        }
+        runCatching { file.writeText(array.toString()) }
+    }
+
+    fun loadDownloadAskBefore(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DL_ASK_BEFORE, false)
+
+    fun saveDownloadAskBefore(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DL_ASK_BEFORE, value).apply()
+    }
+
+    fun loadDeletePrivateDownloads(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DL_DELETE_PRIVATE, false)
+
+    fun saveDeletePrivateDownloads(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DL_DELETE_PRIVATE, value).apply()
+    }
+
+    fun loadDownloadOtherAsk(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DL_OTHER_ASK, false)
+
+    fun saveDownloadOtherAsk(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_DL_OTHER_ASK, value).apply()
+    }
+
+    fun loadContentPreferences(context: Context): Map<String, ContentPreference> {
+        val raw = prefs(context).getString(KEY_DL_CONTENT_ACTIONS, null)
+        val overrides = mutableMapOf<String, ContentPreference>()
+        if (raw != null) {
+            runCatching {
+                val obj = JSONObject(raw)
+                obj.keys().forEach { key ->
+                    val entry = obj.opt(key)
+                    when (entry) {
+                        is JSONObject -> {
+                            val name = entry.optString("action")
+                            val action = ContentAction.entries.firstOrNull { it.name == name }
+                            if (action != null) {
+                                overrides[key] = ContentPreference(
+                                    action = action,
+                                    packageName = entry.optString("package").ifBlank { null },
+                                    className = entry.optString("class").ifBlank { null },
+                                    appLabel = entry.optString("label").ifBlank { null },
+                                )
+                            }
+                        }
+                        is String -> {
+                            ContentAction.entries.firstOrNull { it.name == entry }?.let { action ->
+                                overrides[key] = ContentPreference(action = action)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return defaultContentTypeRules.associate { rule ->
+            rule.key to (overrides[rule.key] ?: ContentPreference(rule.defaultAction))
+        }
+    }
+
+    fun saveContentPreference(context: Context, key: String, pref: ContentPreference) {
+        val current = loadContentPreferences(context).toMutableMap()
+        current[key] = pref
+        val obj = JSONObject()
+        current.forEach { (k, v) ->
+            obj.put(
+                k,
+                JSONObject()
+                    .put("action", v.action.name)
+                    .put("package", v.packageName.orEmpty())
+                    .put("class", v.className.orEmpty())
+                    .put("label", v.appLabel.orEmpty()),
+            )
+        }
+        prefs(context).edit().putString(KEY_DL_CONTENT_ACTIONS, obj.toString()).apply()
+    }
+
     fun loadTabs(context: Context): List<BrowserTab> {
         val raw = prefs(context).getString(KEY_TABS, null) ?: return emptyList()
         return runCatching {
@@ -223,11 +653,15 @@ object BrowserStore {
                     val url = entry.optString("url", "")
                     val domain = entry.optString("domain", "")
                     val title = entry.optString("title", if (url.isEmpty()) "New tab" else domain)
+                    val id = entry.optString("id", "").ifEmpty { UUID.randomUUID().toString() }
+                    val desktopMode = entry.optBoolean("desktopMode", false)
                     add(BrowserTab(
                         title = title.ifEmpty { if (url.isEmpty()) "New tab" else domain },
                         domain = domain,
                         url = url,
                         private = false,
+                        desktopMode = desktopMode,
+                        id = id,
                     ))
                 }
             }
@@ -241,12 +675,64 @@ object BrowserStore {
             array.put(JSONObject()
                 .put("title", tab.title)
                 .put("domain", tab.domain)
-                .put("url", tab.url))
+                .put("url", tab.url)
+                .put("desktopMode", tab.desktopMode)
+                .put("id", tab.id))
         }
         prefs(context)
             .edit()
             .putString(KEY_TABS, array.toString())
             .apply()
+    }
+
+    private val diskExecutor = Executors.newSingleThreadExecutor()
+
+    private fun thumbnailDir(context: Context): File =
+        File(context.filesDir, "tab_thumbnails").apply { if (!exists()) mkdirs() }
+
+    fun saveTabThumbnail(context: Context, tabId: String, bitmap: Bitmap) {
+        if (tabId.isEmpty()) return
+        diskExecutor.execute {
+            runCatching {
+                val file = File(thumbnailDir(context), "$tabId.jpg")
+                FileOutputStream(file).use { out ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                }
+            }
+        }
+    }
+
+    fun loadTabThumbnail(context: Context, tabId: String): Bitmap? {
+        if (tabId.isEmpty()) return null
+        return runCatching {
+            val file = File(thumbnailDir(context), "$tabId.jpg")
+            if (file.exists()) {
+                val options = BitmapFactory.Options().apply {
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                }
+                BitmapFactory.decodeFile(file.absolutePath, options)
+            } else {
+                null
+            }
+        }.getOrNull()
+    }
+
+    fun deleteTabThumbnail(context: Context, tabId: String) {
+        if (tabId.isEmpty()) return
+        diskExecutor.execute {
+            runCatching {
+                val file = File(thumbnailDir(context), "$tabId.jpg")
+                if (file.exists()) file.delete()
+            }
+        }
+    }
+
+    fun clearAllTabThumbnails(context: Context) {
+        diskExecutor.execute {
+            runCatching {
+                thumbnailDir(context).listFiles()?.forEach { it.delete() }
+            }
+        }
     }
 
     fun loadActiveTab(context: Context): Int =
@@ -269,6 +755,7 @@ object BrowserStore {
         val domain: String,
         val sizeBytes: Long,
         val timestamp: Long,
+        val relativePath: String = "Download",
     )
 
     fun loadDownloads(context: Context): List<DownloadRecord> {
@@ -283,6 +770,7 @@ object BrowserStore {
                         domain = entry.optString("domain", ""),
                         sizeBytes = entry.optLong("sizeBytes", 0L),
                         timestamp = entry.optLong("timestamp", 0L),
+                        relativePath = entry.optString("relativePath", "Download"),
                     ))
                 }
             }
@@ -298,7 +786,8 @@ object BrowserStore {
                 .put("title", item.title)
                 .put("domain", item.domain)
                 .put("sizeBytes", item.sizeBytes)
-                .put("timestamp", item.timestamp))
+                .put("timestamp", item.timestamp)
+                .put("relativePath", item.relativePath))
         }
         prefs(context).edit().putString(KEY_DOWNLOADS, array.toString()).apply()
     }
@@ -311,9 +800,17 @@ object BrowserStore {
                 .put("title", item.title)
                 .put("domain", item.domain)
                 .put("sizeBytes", item.sizeBytes)
-                .put("timestamp", item.timestamp))
+                .put("timestamp", item.timestamp)
+                .put("relativePath", item.relativePath))
         }
         prefs(context).edit().putString(KEY_DOWNLOADS, array.toString()).apply()
+    }
+
+    fun hasPromptedDefaultBrowser(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_DEFAULT_BROWSER_PROMPTED, false)
+
+    fun setDefaultBrowserPrompted(context: Context, prompted: Boolean = true) {
+        prefs(context).edit().putBoolean(KEY_DEFAULT_BROWSER_PROMPTED, prompted).apply()
     }
 
     fun loadHiddenDownloads(context: Context): Set<String> =
@@ -330,5 +827,238 @@ object BrowserStore {
             val updated = current.toMutableSet().apply { remove(title) }
             prefs(context).edit().putStringSet(KEY_HIDDEN_DOWNLOADS, updated).apply()
         }
+    }
+
+    fun loadDismissedClipTimestamp(context: Context): Long? {
+        val p = prefs(context)
+        return if (p.contains(KEY_DISMISSED_CLIP_TIMESTAMP)) p.getLong(KEY_DISMISSED_CLIP_TIMESTAMP, 0L) else null
+    }
+
+    fun saveDismissedClipTimestamp(context: Context, timestamp: Long) {
+        prefs(context).edit().putLong(KEY_DISMISSED_CLIP_TIMESTAMP, timestamp).apply()
+    }
+
+    fun loadClosedTabs(context: Context): List<ClosedTab> {
+        val raw = prefs(context).getString(KEY_CLOSED_TABS, null) ?: return emptyList()
+        val now = System.currentTimeMillis()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val entry = array.getJSONObject(i)
+                    val url = entry.optString("url", "")
+                    val closedAt = entry.optLong("closedAt", 0L)
+                    if (url.isNotBlank() && now - closedAt <= CLOSED_TAB_EXPIRY_MS) {
+                        add(
+                            ClosedTab(
+                                id = entry.optString("id").ifBlank { java.util.UUID.randomUUID().toString() },
+                                title = entry.optString("title", ""),
+                                domain = entry.optString("domain", ""),
+                                url = url,
+                                desktopMode = entry.optBoolean("desktopMode", false),
+                                closedAt = closedAt,
+                            ),
+                        )
+                    }
+                }
+            }.take(MAX_CLOSED_TABS)
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveClosedTabs(context: Context, tabs: List<ClosedTab>) {
+        val now = System.currentTimeMillis()
+        val array = JSONArray()
+        tabs.asSequence()
+            .filter { it.url.isNotBlank() && now - it.closedAt <= CLOSED_TAB_EXPIRY_MS }
+            .take(MAX_CLOSED_TABS)
+            .forEach { tab ->
+                array.put(
+                    JSONObject()
+                        .put("id", tab.id)
+                        .put("title", tab.title)
+                        .put("domain", tab.domain)
+                        .put("url", tab.url)
+                        .put("desktopMode", tab.desktopMode)
+                        .put("closedAt", tab.closedAt),
+                )
+            }
+        prefs(context).edit().putString(KEY_CLOSED_TABS, array.toString()).apply()
+    }
+
+    fun pdfPositionKey(url: String?, title: String): String {
+        val (prefix, raw) = if (!url.isNullOrBlank()) {
+            "u:" to url
+        } else {
+            "t:" to title
+        }
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(raw.toByteArray(Charsets.UTF_8))
+        val hex = digest.joinToString("") { "%02x".format(it) }
+        return prefix + hex
+    }
+
+    fun loadPdfPosition(context: Context, key: String): Int {
+        val raw = prefs(context).getString(KEY_PDF_POSITIONS, null) ?: return 1
+        return runCatching {
+            val obj = JSONObject(raw)
+            val entry = obj.optJSONObject(key) ?: return@runCatching 1
+            entry.optInt("page", 1).coerceAtLeast(1)
+        }.getOrDefault(1)
+    }
+
+    fun savePdfPosition(context: Context, key: String, page: Int) {
+        if (page < 1) return
+        val obj = runCatching {
+            val raw = prefs(context).getString(KEY_PDF_POSITIONS, null)
+            if (raw != null) JSONObject(raw) else JSONObject()
+        }.getOrElse { JSONObject() }
+
+        obj.put(
+            key,
+            JSONObject()
+                .put("page", page)
+                .put("updatedAt", System.currentTimeMillis()),
+        )
+
+        if (obj.length() > MAX_PDF_POSITIONS) {
+            val entries = buildList {
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    val ts = obj.optJSONObject(k)?.optLong("updatedAt", 0L) ?: 0L
+                    add(k to ts)
+                }
+            }.sortedByDescending { it.second }.take(MAX_PDF_POSITIONS)
+            val pruned = JSONObject()
+            entries.forEach { (k, _) ->
+                obj.optJSONObject(k)?.let { pruned.put(k, it) }
+            }
+            prefs(context).edit().putString(KEY_PDF_POSITIONS, pruned.toString()).apply()
+        } else {
+            prefs(context).edit().putString(KEY_PDF_POSITIONS, obj.toString()).apply()
+        }
+    }
+
+    enum class QuickArcStyle { FILLED, HOLLOW }
+
+    enum class QuickArcSize(val scale: Float) {
+        SMALL(0.82f),
+        MEDIUM(1.0f),
+        LARGE(1.16f),
+    }
+
+    enum class QuickArcAction {
+        HOME,
+        TABS,
+        SETTINGS,
+        NEW_TAB,
+        BOOKMARKS,
+        HISTORY,
+        DOWNLOADS,
+        SAVED_PAGES,
+    }
+
+    val defaultQuickArcItems: List<QuickArcAction> = listOf(
+        QuickArcAction.HOME,
+        QuickArcAction.TABS,
+        QuickArcAction.SETTINGS,
+    )
+
+    fun loadQuickArcStyle(context: Context): QuickArcStyle {
+        val raw = prefs(context).getString(KEY_QUICK_ARC_STYLE, null)
+        return QuickArcStyle.entries.firstOrNull { it.name == raw } ?: QuickArcStyle.FILLED
+    }
+
+    fun saveQuickArcStyle(context: Context, style: QuickArcStyle) {
+        prefs(context).edit().putString(KEY_QUICK_ARC_STYLE, style.name).apply()
+    }
+
+    fun loadQuickArcSize(context: Context): QuickArcSize {
+        val raw = prefs(context).getString(KEY_QUICK_ARC_SIZE, null)
+        return QuickArcSize.entries.firstOrNull { it.name == raw } ?: QuickArcSize.MEDIUM
+    }
+
+    fun saveQuickArcSize(context: Context, size: QuickArcSize) {
+        prefs(context).edit().putString(KEY_QUICK_ARC_SIZE, size.name).apply()
+    }
+
+    fun loadQuickArcItems(context: Context): List<QuickArcAction> {
+        val raw = prefs(context).getString(KEY_QUICK_ARC_ITEMS, null) ?: return defaultQuickArcItems
+        val parsed = raw.split(",")
+            .mapNotNull { name -> QuickArcAction.entries.firstOrNull { it.name == name.trim() } }
+            .distinct()
+        return parsed.ifEmpty { defaultQuickArcItems }
+    }
+
+    fun saveQuickArcItems(context: Context, items: List<QuickArcAction>) {
+        val sanitized = items.distinct().ifEmpty { defaultQuickArcItems }
+        prefs(context).edit().putString(KEY_QUICK_ARC_ITEMS, sanitized.joinToString(",") { it.name }).apply()
+    }
+
+    enum class BarScrollBehavior {
+        HIDE_BOTH,
+        ALWAYS_VISIBLE,
+        TOP_ALWAYS,
+        BOTTOM_ALWAYS,
+    }
+
+    fun loadBarScrollBehavior(context: Context): BarScrollBehavior {
+        val raw = prefs(context).getString(KEY_BAR_SCROLL_BEHAVIOR, null)
+        return BarScrollBehavior.entries.firstOrNull { it.name == raw } ?: BarScrollBehavior.HIDE_BOTH
+    }
+
+    fun saveBarScrollBehavior(context: Context, behavior: BarScrollBehavior) {
+        prefs(context).edit().putString(KEY_BAR_SCROLL_BEHAVIOR, behavior.name).apply()
+    }
+
+    data class SearchSuggestionSettings(
+        val showSearchSuggestions: Boolean = true,
+        val searchSuggestionsBeforeHistory: Boolean = true,
+        val searchSuggestionsInPrivate: Boolean = false,
+        val suggestHistory: Boolean = true,
+        val suggestBookmarks: Boolean = true,
+        val suggestClipboard: Boolean = true,
+        val suggestOpenTabs: Boolean = true,
+        val suggestShortcuts: Boolean = true,
+        val suggestRecentSearches: Boolean = true,
+        val suggestSearchEngines: Boolean = true,
+    )
+
+    fun loadSearchSuggestionSettings(context: Context): SearchSuggestionSettings {
+        val p = prefs(context)
+        return SearchSuggestionSettings(
+            showSearchSuggestions = p.getBoolean(KEY_SHOW_SEARCH_SUGGESTIONS, true),
+            searchSuggestionsBeforeHistory = p.getBoolean(KEY_SEARCH_SUGGESTIONS_BEFORE_HISTORY, true),
+            searchSuggestionsInPrivate = p.getBoolean(KEY_SEARCH_SUGGESTIONS_IN_PRIVATE, false),
+            suggestHistory = p.getBoolean(KEY_SUGGEST_HISTORY, true),
+            suggestBookmarks = p.getBoolean(KEY_SUGGEST_BOOKMARKS, true),
+            suggestClipboard = p.getBoolean(KEY_SUGGEST_CLIPBOARD, true),
+            suggestOpenTabs = p.getBoolean(KEY_SUGGEST_OPEN_TABS, true),
+            suggestShortcuts = p.getBoolean(KEY_SUGGEST_SHORTCUTS, true),
+            suggestRecentSearches = p.getBoolean(KEY_SUGGEST_RECENT_SEARCHES, true),
+            suggestSearchEngines = p.getBoolean(KEY_SUGGEST_SEARCH_ENGINES, true),
+        )
+    }
+
+    fun saveSearchSuggestionSettings(context: Context, settings: SearchSuggestionSettings) {
+        prefs(context).edit()
+            .putBoolean(KEY_SHOW_SEARCH_SUGGESTIONS, settings.showSearchSuggestions)
+            .putBoolean(KEY_SEARCH_SUGGESTIONS_BEFORE_HISTORY, settings.searchSuggestionsBeforeHistory)
+            .putBoolean(KEY_SEARCH_SUGGESTIONS_IN_PRIVATE, settings.searchSuggestionsInPrivate)
+            .putBoolean(KEY_SUGGEST_HISTORY, settings.suggestHistory)
+            .putBoolean(KEY_SUGGEST_BOOKMARKS, settings.suggestBookmarks)
+            .putBoolean(KEY_SUGGEST_CLIPBOARD, settings.suggestClipboard)
+            .putBoolean(KEY_SUGGEST_OPEN_TABS, settings.suggestOpenTabs)
+            .putBoolean(KEY_SUGGEST_SHORTCUTS, settings.suggestShortcuts)
+            .putBoolean(KEY_SUGGEST_RECENT_SEARCHES, settings.suggestRecentSearches)
+            .putBoolean(KEY_SUGGEST_SEARCH_ENGINES, settings.suggestSearchEngines)
+            .apply()
+    }
+
+    fun loadPdfNightMode(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_PDF_NIGHT_MODE, false)
+
+    fun savePdfNightMode(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_PDF_NIGHT_MODE, enabled).apply()
     }
 }

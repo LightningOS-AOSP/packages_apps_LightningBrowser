@@ -1,6 +1,11 @@
 package com.lightning.browser.ui.settings
 
-import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -10,6 +15,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,19 +35,27 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import com.lightning.browser.R
 import com.lightning.browser.ui.components.ShapedIcon
 import com.lightning.browser.ui.components.TonalIconButton
 import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.rememberLightningHaptics
 import com.lightning.browser.ui.theme.tone
 import com.lightning.browser.ui.theme.ThemeMode
 
@@ -76,6 +90,30 @@ fun SettingsHeader(
             color = colors.onSurface,
             modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 16.dp),
         )
+    }
+}
+
+@Composable
+fun SettingsSectionHeader(
+    title: String,
+    subtitle: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LightningTheme.colors
+    Column(modifier = modifier.padding(horizontal = 4.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = colors.primary,
+        )
+        if (!subtitle.isNullOrEmpty()) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -139,9 +177,18 @@ fun SettingsSwitchRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     shape: Shape = ExpressiveShapes.grouped(0, 1),
+    enabled: Boolean = true,
 ) {
     val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
     Surface(
+        onClick = {
+            if (enabled) {
+                haptics.tick()
+                onCheckedChange(!checked)
+            }
+        },
+        enabled = enabled,
         shape = shape,
         color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
@@ -154,18 +201,24 @@ fun SettingsSwitchRow(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    color = colors.onSurface,
+                    color = if (enabled) colors.onSurface else colors.onSurfaceVariant,
                 )
-                Text(
-                    text = summary,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = colors.onSurfaceVariant,
-                )
+                if (summary.isNotEmpty()) {
+                    Text(
+                        text = summary,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.onSurfaceVariant,
+                    )
+                }
             }
             Spacer(Modifier.width(12.dp))
             Switch(
                 checked = checked,
-                onCheckedChange = onCheckedChange,
+                enabled = enabled,
+                onCheckedChange = {
+                    haptics.tick()
+                    onCheckedChange(it)
+                },
                 thumbContent = if (checked) {
                     {
                         Icon(
@@ -199,8 +252,12 @@ fun SettingsRadioRow(
     shape: Shape = ExpressiveShapes.grouped(0, 1),
 ) {
     val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
     Surface(
-        onClick = onClick,
+        onClick = {
+            haptics.tick()
+            onClick()
+        },
         shape = shape,
         color = colors.surfaceContainerHigh,
         modifier = Modifier.fillMaxWidth(),
@@ -239,7 +296,7 @@ fun SettingsRadioRow(
 }
 
 @Composable
-private fun RadioDot(selected: Boolean) {
+internal fun RadioDot(selected: Boolean) {
     val colors = LightningTheme.colors
     Box(
         modifier = Modifier
@@ -275,39 +332,72 @@ fun SwipeToDeleteBox(
     shape: Shape = MaterialTheme.shapes.extraSmall,
     content: @Composable () -> Unit,
 ) {
+    val haptics = rememberLightningHaptics()
+    var isRemoved by remember { mutableStateOf(false) }
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.EndToStart) {
-                onDelete()
+                isRemoved = true
                 true
             } else {
                 false
             }
         },
     )
-    SwipeToDismissBox(
-        state = dismissState,
+    var wasTriggered by remember { mutableStateOf(false) }
+    LaunchedEffect(dismissState.targetValue) {
+        val triggered = dismissState.targetValue == SwipeToDismissBoxValue.EndToStart
+        if (triggered && !wasTriggered) {
+            haptics.gestureThreshold()
+        }
+        wasTriggered = triggered
+    }
+    LaunchedEffect(isRemoved) {
+        if (isRemoved) {
+            delay(240L)
+            onDelete()
+        }
+    }
+    AnimatedVisibility(
+        visible = !isRemoved,
+        exit = shrinkVertically(animationSpec = tween(220)) + fadeOut(animationSpec = tween(180)),
         modifier = modifier,
-        enableDismissFromStartToEnd = false,
-        backgroundContent = {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(shape)
-                    .background(SweepColor),
-                contentAlignment = Alignment.CenterEnd,
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Delete,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier
-                        .padding(end = 20.dp)
-                        .size(20.dp),
-                )
-            }
-        },
     ) {
-        content()
+        SwipeToDismissBox(
+            state = dismissState,
+            enableDismissFromStartToEnd = false,
+            backgroundContent = {
+                val triggered = dismissState.targetValue == SwipeToDismissBoxValue.EndToStart
+                val bgColor by animateColorAsState(
+                    targetValue = if (triggered) SweepColor else SweepColor.copy(alpha = 0.72f),
+                    animationSpec = tween(150),
+                    label = "swipeBgColor",
+                )
+                val iconScale by animateFloatAsState(
+                    targetValue = if (triggered) 1.2f else 0.9f,
+                    animationSpec = tween(150),
+                    label = "swipeIconScale",
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(shape)
+                        .background(bgColor),
+                    contentAlignment = Alignment.CenterEnd,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Delete,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier
+                            .padding(end = 20.dp)
+                            .size(20.dp)
+                            .scale(iconScale),
+                    )
+                }
+            },
+        ) {
+            content()
+        }
     }
 }

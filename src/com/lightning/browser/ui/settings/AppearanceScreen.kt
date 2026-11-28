@@ -32,15 +32,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
+import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.theme.LightningMotion
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.ThemeMode
 import com.lightning.browser.ui.theme.lightningColorsFor
+import com.lightning.browser.ui.theme.rememberLightningHaptics
 
 @Composable
 fun AppearanceScreen(
     themeMode: ThemeMode,
     onThemeModeSelect: (ThemeMode) -> Unit,
+    tabPreviewsEnabled: Boolean,
+    onTabPreviewsChange: (Boolean) -> Unit,
+    readingTimeEnabled: Boolean,
+    onReadingTimeChange: (Boolean) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -56,12 +62,32 @@ fun AppearanceScreen(
         SegmentedThemePicker(themeMode, onThemeModeSelect)
         Spacer(Modifier.height(28.dp))
         ThemePreview(themeMode)
+        Spacer(Modifier.height(20.dp))
+        GroupedColumn(2) { i, shape ->
+            when (i) {
+                0 -> SettingsSwitchRow(
+                    title = stringResource(R.string.appearance_tab_previews),
+                    summary = stringResource(R.string.appearance_tab_previews_summary),
+                    checked = tabPreviewsEnabled,
+                    onCheckedChange = onTabPreviewsChange,
+                    shape = shape,
+                )
+                else -> SettingsSwitchRow(
+                    title = stringResource(R.string.appearance_reading_time),
+                    summary = stringResource(R.string.appearance_reading_time_summary),
+                    checked = readingTimeEnabled,
+                    onCheckedChange = onReadingTimeChange,
+                    shape = shape,
+                )
+            }
+        }
     }
 }
 
 @Composable
 private fun SegmentedThemePicker(selected: ThemeMode, onSelect: (ThemeMode) -> Unit) {
     val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
     Row(
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         modifier = Modifier
@@ -83,7 +109,10 @@ private fun SegmentedThemePicker(selected: ThemeMode, onSelect: (ThemeMode) -> U
                 bottomEnd = if (i == last) 26.dp else inner,
             )
             Surface(
-                onClick = { onSelect(mode) },
+                onClick = {
+                    haptics.tick()
+                    onSelect(mode)
+                },
                 shape = shape,
                 color = if (isSelected) colors.primary else colors.surfaceContainerHigh,
                 modifier = Modifier

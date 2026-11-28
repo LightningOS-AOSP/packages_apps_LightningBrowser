@@ -3,6 +3,7 @@ package com.lightning.browser.ui.settings
 import androidx.annotation.StringRes
 import com.lightning.browser.R
 import java.net.URLEncoder
+import java.util.UUID
 
 enum class DnsProvider(
     @StringRes val labelRes: Int,
@@ -24,6 +25,24 @@ enum class SearchEngine(
     DUCKDUCKGO(R.string.search_engine_duckduckgo, R.string.search_engine_duckduckgo_detail, "https://duckduckgo.com/?q=%s"),
     BING(R.string.search_engine_bing, R.string.search_engine_bing_detail, "https://www.bing.com/search?q=%s"),
     BRAVE(R.string.search_engine_brave, R.string.search_engine_brave_detail, "https://search.brave.com/search?q=%s"),
+    PERPLEXITY(R.string.search_engine_perplexity, R.string.search_engine_perplexity_detail, "https://www.perplexity.ai/search?q=%s"),
+    WIKIPEDIA(R.string.search_engine_wikipedia, R.string.search_engine_wikipedia_detail, "https://en.wikipedia.org/w/index.php?search=%s"),
+}
+
+data class CustomSearchEngine(
+    val id: String = UUID.randomUUID().toString(),
+    val name: String,
+    val searchUrlFormat: String,
+    val keyword: String = "",
+)
+
+fun formatSearchUrl(format: String, query: String): String {
+    val encoded = URLEncoder.encode(query.trim(), "UTF-8")
+    return if (format.contains("%s")) {
+        format.replace("%s", encoded)
+    } else {
+        "$format$encoded"
+    }
 }
 
 enum class StartupBehavior(
@@ -35,4 +54,7 @@ enum class StartupBehavior(
 }
 
 fun SearchEngine.searchUrl(query: String): String =
-    String.format(searchUrlFormat, URLEncoder.encode(query.trim(), "UTF-8"))
+    formatSearchUrl(searchUrlFormat, query)
+
+fun CustomSearchEngine.searchUrl(query: String): String =
+    formatSearchUrl(searchUrlFormat, query)

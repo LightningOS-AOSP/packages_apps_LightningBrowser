@@ -11,15 +11,25 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Article
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,6 +37,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.lightning.browser.R
 import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.components.ShapedIcon
@@ -35,6 +46,7 @@ import com.lightning.browser.ui.theme.EyebrowTextStyle
 import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningColors
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.rememberLightningHaptics
 
 @Composable
 fun HistoryScreen(
@@ -46,6 +58,20 @@ fun HistoryScreen(
     modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
+    var showClearConfirm by remember { mutableStateOf(false) }
+
+    if (showClearConfirm) {
+        ClearHistoryConfirmDialog(
+            onDismiss = { showClearConfirm = false },
+            onConfirm = {
+                haptics.reject()
+                showClearConfirm = false
+                onClear()
+            },
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -54,7 +80,10 @@ fun HistoryScreen(
             .padding(top = 8.dp, bottom = 24.dp),
     ) {
         SettingsHeader(stringResource(R.string.history_title), onBack) {
-            TextButton(onClick = onClear, enabled = history.isNotEmpty()) {
+            TextButton(
+                onClick = { showClearConfirm = true },
+                enabled = history.isNotEmpty(),
+            ) {
                 Text(
                     text = stringResource(R.string.history_clear),
                     color = colors.primary,
@@ -161,6 +190,91 @@ private fun EmptyState() {
             style = MaterialTheme.typography.bodyMedium,
             color = colors.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun ClearHistoryConfirmDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    val errorColor = MaterialTheme.colorScheme.error
+    val onErrorColor = MaterialTheme.colorScheme.onError
+    val errorContainer = MaterialTheme.colorScheme.errorContainer
+    val onErrorContainer = MaterialTheme.colorScheme.onErrorContainer
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = colors.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            shadowElevation = 6.dp,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+            ) {
+                ShapedIcon(
+                    icon = Icons.Filled.DeleteSweep,
+                    shape = ExpressiveShapes.Burst8,
+                    container = errorContainer,
+                    content = onErrorContainer,
+                    size = 52.dp,
+                    iconSize = 26.dp,
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    text = stringResource(R.string.history_clear_confirm_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(R.string.history_clear_confirm_message),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = CircleShape,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.outline),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.history_clear_cancel_action),
+                            color = colors.onSurface,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Button(
+                        onClick = onConfirm,
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = errorColor,
+                            contentColor = onErrorColor,
+                        ),
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .height(48.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.history_clear_confirm_action),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

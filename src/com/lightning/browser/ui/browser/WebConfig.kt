@@ -16,6 +16,7 @@
 
 package com.lightning.browser.ui.browser
 
+import android.net.Uri
 import com.lightning.browser.ui.tabs.BrowserTab
 import java.io.File
 
@@ -26,16 +27,25 @@ class WebConfig(
     var bypassTrusted: Boolean,
 ) {
     var userAgent: String? = null
+    var defaultUserAgent: String? = null
+    var desktopMode: Boolean = tab.desktopMode
+    var isActive: Boolean = true
+    var readingTimeEnabled: Boolean = false
     var fullscreen: FullscreenVideo? = null
     var onProgress: (Int) -> Unit = {}
     var onNavChange: (Boolean, Boolean) -> Unit = { _, _ -> }
     var onScrolled: (Int, Int) -> Unit = { _, _ -> }
     var onUrlChange: (String) -> Unit = {}
+    var onDuplicateCheckCandidate: (String) -> Unit = {}
     var onPageMeta: (String, String, String) -> Unit = { _, _, _ -> }
+    var onReadingTime: (ReadingTime?) -> Unit = {}
     var onDownload: (String, String?, String?, String?) -> Unit = { _, _, _, _ -> }
     var onDownloadStart: (String) -> Unit = {}
     var onDownloadComplete: (String) -> Unit = {}
     var onDuplicateBlob: (String, String, String, File) -> Unit = { _, _, _, _ -> }
     var onBlocked: () -> Unit = {}
     var onDnsResolved: () -> Unit = {}
+    var onHttpError: (url: String, statusCode: Int) -> Unit = { _, _ -> }
+    var onPrintRequest: () -> Unit = {}
+    var onMailtoPrompt: (Uri) -> Unit = {}
 }

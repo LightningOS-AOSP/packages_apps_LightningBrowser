@@ -16,12 +16,15 @@
 
 package com.lightning.browser
 
+import android.content.Intent
 import android.os.Bundle
 import android.os.Process
 import android.view.WindowManager
 import android.webkit.WebView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import com.lightning.browser.ui.BrowserStore
+import com.lightning.browser.ui.browser.BrowserDownloads
 import com.lightning.browser.ui.root.LightningBrowserRoot
 import java.io.File
 
@@ -31,6 +34,7 @@ class IncognitoActivity : ComponentActivity() {
         wipeSessionData()
         runCatching { WebView.setDataDirectorySuffix(DATA_SUFFIX) }
         super.onCreate(savedInstanceState)
+        runCatching { startService(Intent(this, IncognitoCleanupService::class.java)) }
         window.setFlags(
             WindowManager.LayoutParams.FLAG_SECURE,
             WindowManager.LayoutParams.FLAG_SECURE,
@@ -44,6 +48,7 @@ class IncognitoActivity : ComponentActivity() {
         val closing = isFinishing
         super.onDestroy()
         if (closing) {
+            runCatching { stopService(Intent(this, IncognitoCleanupService::class.java)) }
             wipeSessionData()
             Process.killProcess(Process.myPid())
         }
@@ -53,6 +58,11 @@ class IncognitoActivity : ComponentActivity() {
         File(applicationInfo.dataDir, "app_webview_$DATA_SUFFIX").deleteRecursively()
         File(cacheDir, "WebView_$DATA_SUFFIX").deleteRecursively()
         File(cacheDir.parentFile, "app_webview_$DATA_SUFFIX").deleteRecursively()
+        if (BrowserStore.loadDeletePrivateDownloads(this)) {
+            BrowserStore.popAllPrivateDownloads(this).forEach { rec ->
+                BrowserDownloads.deleteByFileName(this, rec.fileName, rec.relativePath)
+            }
+        }
     }
 
     private companion object {

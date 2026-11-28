@@ -1,9 +1,16 @@
 package com.lightning.browser.ui.home
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,12 +27,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -35,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +58,7 @@ import com.lightning.browser.ui.theme.EyebrowTextStyle
 import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningColors
 import com.lightning.browser.ui.theme.LightningTheme
+import com.lightning.browser.ui.theme.rememberLightningHaptics
 import com.lightning.browser.ui.theme.tone
 import com.lightning.browser.ui.theme.WordmarkTextStyle
 
@@ -54,6 +68,9 @@ fun HomeScreen(
     pinnedSites: List<PinnedSite> = emptyList(),
     onOpenSearch: () -> Unit = {},
     onOpenSite: (String) -> Unit = {},
+    showClipboardBanner: Boolean = false,
+    onOpenClipboardBanner: () -> Unit = {},
+    onDismissClipboardBanner: () -> Unit = {},
     onOpenProfile: () -> Unit = {},
     onAddPinned: () -> Unit = {},
     onRemovePinned: (PinnedSite) -> Unit = {},
@@ -61,6 +78,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
 ) {
     val colors = LightningTheme.colors
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -71,7 +89,23 @@ fun HomeScreen(
         HomeHeader(onOpenProfile = onOpenProfile)
         Spacer(Modifier.height(20.dp))
         SearchBar(onOpenSearch = onOpenSearch)
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(16.dp))
+        AnimatedVisibility(
+            visible = showClipboardBanner,
+            enter = expandVertically(tween(220)) + fadeIn(tween(220)),
+            exit = shrinkVertically(tween(180)) + fadeOut(tween(180)),
+        ) {
+            Column {
+                ClipboardUrlHomeBanner(
+                    onOpen = onOpenClipboardBanner,
+                    onDismiss = onDismissClipboardBanner,
+                )
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+        if (!showClipboardBanner) {
+            Spacer(Modifier.height(4.dp))
+        }
         if (incognito) {
             IncognitoNotice()
             Spacer(Modifier.height(20.dp))
@@ -178,6 +212,87 @@ private fun SearchBar(onOpenSearch: () -> Unit) {
 }
 
 @Composable
+private fun ClipboardUrlHomeBanner(
+    onOpen: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
+    Surface(
+        onClick = {
+            haptics.confirm()
+            onOpen()
+        },
+        shape = RoundedCornerShape(24.dp),
+        color = colors.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 12.dp, end = 6.dp, top = 10.dp, bottom = 10.dp),
+        ) {
+            ShapedIcon(
+                icon = Icons.Filled.Link,
+                shape = ExpressiveShapes.Cookie9,
+                container = colors.primaryContainer,
+                content = colors.onPrimaryContainer,
+                size = 40.dp,
+                iconSize = 20.dp,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.clipboard_url_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = colors.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = stringResource(R.string.clipboard_url_home_subtitle),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.width(6.dp))
+            Button(
+                onClick = {
+                    haptics.confirm()
+                    onOpen()
+                },
+                shape = CircleShape,
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = colors.primary,
+                    contentColor = colors.onPrimary,
+                ),
+                modifier = Modifier.height(36.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.clipboard_url_open),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.clipboard_url_dismiss),
+                    tint = colors.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun QuickAccessRow(
     pinnedSites: List<PinnedSite>,
     onOpenSite: (String) -> Unit,
@@ -185,6 +300,7 @@ private fun QuickAccessRow(
     onRemovePinned: (PinnedSite) -> Unit,
 ) {
     val colors = LightningTheme.colors
+    val haptics = rememberLightningHaptics()
     LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         itemsIndexed(pinnedSites) { i, site ->
             val (container, onContainer) = colors.chipColors(site.tone)
@@ -195,7 +311,10 @@ private fun QuickAccessRow(
                     .pointerInput(site) {
                         detectTapGestures(
                             onTap = { onOpenSite(site.domain) },
-                            onLongPress = { onRemovePinned(site) },
+                            onLongPress = {
+                                haptics.longPress()
+                                onRemovePinned(site)
+                            },
                         )
                     },
             ) {

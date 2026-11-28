@@ -152,7 +152,7 @@ fun DownloadsScreen(
             },
             onLocate = {
                 selectedItem = null
-                BrowserDownloads.locateDownload(context)
+                BrowserDownloads.locateDownload(context, item)
             },
             onShare = {
                 selectedItem = null
