@@ -9,8 +9,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -18,8 +16,6 @@ import androidx.compose.ui.unit.dp
 import com.lightning.browser.R
 import com.lightning.browser.ui.BrowserStore.BarScrollBehavior
 import com.lightning.browser.ui.components.GroupedColumn
-import com.lightning.browser.ui.theme.EyebrowTextStyle
-import com.lightning.browser.ui.theme.LightningTheme
 
 @Composable
 fun ControlsScreen(
@@ -32,8 +28,6 @@ fun ControlsScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = LightningTheme.colors
-
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -64,18 +58,9 @@ fun ControlsScreen(
         }
 
         Spacer(Modifier.height(24.dp))
-        Text(
-            text = stringResource(R.string.settings_toolbar_behavior_title).uppercase(),
-            style = EyebrowTextStyle,
-            color = colors.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = stringResource(R.string.settings_toolbar_behavior_summary),
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp),
+        SettingsSectionHeader(
+            title = stringResource(R.string.settings_toolbar_behavior_title),
+            subtitle = stringResource(R.string.settings_toolbar_behavior_summary),
         )
         Spacer(Modifier.height(10.dp))
         GroupedColumn(4) { i, shape ->

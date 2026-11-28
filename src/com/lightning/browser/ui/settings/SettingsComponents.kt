@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -89,6 +90,30 @@ fun SettingsHeader(
             color = colors.onSurface,
             modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 16.dp),
         )
+    }
+}
+
+@Composable
+fun SettingsSectionHeader(
+    title: String,
+    subtitle: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LightningTheme.colors
+    Column(modifier = modifier.padding(horizontal = 4.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = colors.primary,
+        )
+        if (!subtitle.isNullOrEmpty()) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.onSurfaceVariant,
+            )
+        }
     }
 }
 

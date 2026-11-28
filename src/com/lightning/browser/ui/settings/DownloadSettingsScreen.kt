@@ -65,7 +65,6 @@ import com.lightning.browser.ui.browser.AppHandlerResolver
 import com.lightning.browser.ui.browser.BrowserDownloads
 import com.lightning.browser.ui.components.GroupedColumn
 import com.lightning.browser.ui.components.ShapedIcon
-import com.lightning.browser.ui.theme.EyebrowTextStyle
 import com.lightning.browser.ui.theme.ExpressiveShapes
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.rememberLightningHaptics
@@ -177,18 +176,9 @@ fun DownloadSettingsScreen(
         }
 
         Spacer(Modifier.height(24.dp))
-        Text(
-            text = stringResource(R.string.dl_files_apps_title).uppercase(),
-            style = EyebrowTextStyle,
-            color = colors.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = stringResource(R.string.dl_files_apps_subtitle),
-            style = MaterialTheme.typography.bodySmall,
-            color = colors.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp),
+        SettingsSectionHeader(
+            title = stringResource(R.string.dl_files_apps_title),
+            subtitle = stringResource(R.string.dl_files_apps_subtitle),
         )
         Spacer(Modifier.height(10.dp))
 
@@ -213,12 +203,7 @@ fun DownloadSettingsScreen(
         }
 
         Spacer(Modifier.height(24.dp))
-        Text(
-            text = stringResource(R.string.dl_other_files_title).uppercase(),
-            style = EyebrowTextStyle,
-            color = colors.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp),
-        )
+        SettingsSectionHeader(title = stringResource(R.string.dl_other_files_title))
         Spacer(Modifier.height(10.dp))
         GroupedColumn(2) { i, shape ->
             when (i) {

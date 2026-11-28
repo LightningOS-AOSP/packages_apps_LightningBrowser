@@ -32,7 +32,6 @@ import com.lightning.browser.ui.BrowserStore.QuickArcSize
 import com.lightning.browser.ui.BrowserStore.QuickArcStyle
 import com.lightning.browser.ui.bar.QuickArcContent
 import com.lightning.browser.ui.components.GroupedColumn
-import com.lightning.browser.ui.theme.EyebrowTextStyle
 import com.lightning.browser.ui.theme.LightningMotion
 import com.lightning.browser.ui.theme.LightningTheme
 import com.lightning.browser.ui.theme.rememberLightningHaptics
@@ -112,12 +111,7 @@ fun QuickArcSettingsScreen(
             }
 
             Spacer(Modifier.height(20.dp))
-            Text(
-                text = stringResource(R.string.quick_arc_style_title).uppercase(),
-                style = EyebrowTextStyle,
-                color = colors.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp),
-            )
+            SettingsSectionHeader(title = stringResource(R.string.quick_arc_style_title))
             Spacer(Modifier.height(8.dp))
             ExpressiveOptionRow(
                 options = listOf(
@@ -133,12 +127,7 @@ fun QuickArcSettingsScreen(
             )
 
             Spacer(Modifier.height(20.dp))
-            Text(
-                text = stringResource(R.string.quick_arc_size_title).uppercase(),
-                style = EyebrowTextStyle,
-                color = colors.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp),
-            )
+            SettingsSectionHeader(title = stringResource(R.string.quick_arc_size_title))
             Spacer(Modifier.height(8.dp))
             ExpressiveOptionRow(
                 options = listOf(
@@ -155,18 +144,9 @@ fun QuickArcSettingsScreen(
             )
 
             Spacer(Modifier.height(20.dp))
-            Text(
-                text = stringResource(R.string.quick_arc_items_title).uppercase(),
-                style = EyebrowTextStyle,
-                color = colors.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp),
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = stringResource(R.string.quick_arc_items_subtitle),
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp),
+            SettingsSectionHeader(
+                title = stringResource(R.string.quick_arc_items_title),
+                subtitle = stringResource(R.string.quick_arc_items_subtitle),
             )
             Spacer(Modifier.height(8.dp))
 
